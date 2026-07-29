@@ -3,7 +3,14 @@
 Standalone static frontend for **PEA Solar DocTrack** — GitHub Pages compatible.  
 Visual/behavior reference: GAS mockup (กขท. upload · กธพ. review).
 
-> Login with employee ID only — internal mockup, not production auth.
+## Production vs demo
+
+| | GitHub Pages (this repo) | GAS Web App |
+|--|--------------------------|-------------|
+| Purpose | **Demo** — all UI states in localStorage | **Production** — Spreadsheet + Drive/Graph + email |
+| Login | Employee ID demo cards | Google Workspace + optional demo IDs |
+
+See parent folder `README.md` for GAS production setup.
 
 ## Demo accounts
 

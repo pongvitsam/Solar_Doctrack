@@ -298,6 +298,12 @@
       el('h1', { text: 'Solar DocTrack' }),
       el('p', { text: 'ติดตามเอกสารโครงการโซลาร์รูฟท็อป' })
     ]));
+    if (state.boot && state.boot.deploymentKind === 'static-demo') {
+      card.appendChild(el('div', {
+        className: 'auth-warn',
+        text: 'โหมดสาธิต (GitHub Pages) — ข้อมูลใน localStorage ครบทุกสถานะ · Production จริงใช้ Web App Google Apps Script'
+      }));
+    }
     card.appendChild(renderLoginDemoPanel());
     card.appendChild(el('div', { className: 'auth-warn', text: (state.boot && state.boot.authWarning) || '' }));
 

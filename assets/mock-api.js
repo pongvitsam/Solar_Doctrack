@@ -154,6 +154,13 @@
       read: false,
       createdAt: nowIso()
     });
+    if (typeof console !== 'undefined' && console.info) {
+      var user = getUserById(db, userId);
+      var prefs = user && normalizeEmailPreferences(user.emailPreferences, user.email);
+      if (prefs && prefs.emails && prefs.emails.length) {
+        console.info('[DocTrack demo email]', prefs.emails.join(', '), title, message);
+      }
+    }
   }
 
   function notifyRole(db, role, type, title, message, linkRef) {
@@ -719,10 +726,14 @@
     return ok({
       session: session,
       authWarning: getSetting(db, 'authWarning', AUTH_WARNING),
+      deploymentKind: 'static-demo',
+      deploymentMode: 'demo',
+      allowDemoLogin: true,
       roles: ROLES,
       projectStatuses: PROJECT_STATUS,
       itemStatuses: ITEM_STATUS,
       storageMode: getStorageMode(db),
+      emailNotificationsEnabled: false,
       templates: list(db, 'ChecklistTemplates').filter(function (t) { return t.active !== false; }),
       demoAccounts: DEMO_ACCOUNTS
     });
