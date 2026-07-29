@@ -1205,21 +1205,86 @@
     return panel;
   }
 
+  var MAX_NOTIFY_EMAILS = 10;
+
+  function getNotifyEmailsFromSession() {
+    var prefs = (state.session && state.session.emailPreferences) || {};
+    if (prefs.emails && prefs.emails.length) return prefs.emails.slice(0, MAX_NOTIFY_EMAILS);
+    if (state.session && state.session.email) return [state.session.email];
+    return [''];
+  }
+
+  function collectNotifyEmailsFromDom(listEl) {
+    return readAllEmailInputsFromDom(listEl).filter(function (v) { return v; });
+  }
+
+  function readAllEmailInputsFromDom(listEl) {
+    var inputs = listEl ? listEl.querySelectorAll('.notify-email-input') : [];
+    var out = [];
+    for (var i = 0; i < inputs.length; i++) {
+      out.push(String(inputs[i].value || '').trim());
+    }
+    return out;
+  }
+
   function renderEmailPrefs() {
     var panel = el('div', { className: 'panel' });
     panel.appendChild(el('div', { className: 'panel-h' }, [el('h3', { text: 'การแจ้งเตือนทางอีเมล' })]));
-    panel.appendChild(el('p', { className: 'hint', text: 'ระบุอีเมลของคุณและเลือกเหตุการณ์ที่ต้องการรับแจ้ง (mock — ยังไม่ส่งอีเมลจริง)' }));
+    panel.appendChild(el('p', { className: 'hint', text: 'เพิ่มอีเมลรับแจ้งเตือนได้สูงสุด ' + MAX_NOTIFY_EMAILS + ' ที่ · เลือกเหตุการณ์ที่ต้องการ (mock — ยังไม่ส่งอีเมลจริง)' }));
 
+    var emailList = el('div', { className: 'notify-email-list', id: 'notify_email_list' });
     panel.appendChild(el('div', { className: 'field' }, [
-      el('label', { text: 'อีเมลสำหรับแจ้งเตือน *' }),
-      el('input', {
-        type: 'email',
-        id: 'notify_email',
-        placeholder: 'เช่น your.name@pea.co.th',
-        value: (state.session && state.session.email) || ''
-      }),
-      el('span', { className: 'hint', text: 'แก้ไขได้ตามต้องการ — บันทึกแล้วผูกกับบัญชีรหัสพนักงานของคุณ' })
+      el('label', { text: 'อีเมลรับการแจ้งเตือน *' }),
+      emailList
     ]));
+
+    function paintEmailRows(values) {
+      emailList.innerHTML = '';
+      values.forEach(function (val, idx) {
+        var row = el('div', { className: 'notify-email-row' });
+        row.appendChild(el('span', { className: 'notify-email-num', text: String(idx + 1) + '.' }));
+        row.appendChild(el('input', {
+          type: 'email',
+          className: 'notify-email-input',
+          placeholder: 'เช่น name' + (idx + 1) + '@pea.co.th',
+          value: val || ''
+        }));
+        if (values.length > 1) {
+          row.appendChild(el('button', {
+            type: 'button',
+            className: 'btn btn-ghost btn-sm',
+            onClick: function () {
+              var cur = readAllEmailInputsFromDom(emailList);
+              cur.splice(idx, 1);
+              if (!cur.length) cur = [''];
+              paintEmailRows(cur);
+            }
+          }, ['ลบ']));
+        }
+        emailList.appendChild(row);
+      });
+    }
+
+    var initial = getNotifyEmailsFromSession();
+    if (!initial.length) initial = [''];
+    paintEmailRows(initial);
+
+    var addBtn = el('button', {
+      type: 'button',
+      className: 'btn btn-ghost btn-sm',
+      style: 'margin:4px 0 12px',
+      onClick: function () {
+        var cur = readAllEmailInputsFromDom(emailList);
+        if (!cur.length) cur = [''];
+        if (cur.length >= MAX_NOTIFY_EMAILS) {
+          toast('เพิ่มได้ไม่เกิน ' + MAX_NOTIFY_EMAILS + ' อีเมล', 'err');
+          return;
+        }
+        cur.push('');
+        paintEmailRows(cur);
+      }
+    }, ['+ เพิ่มอีเมล (' + MAX_NOTIFY_EMAILS + ' สูงสุด)']);
+    panel.appendChild(addBtn);
 
     var keys = [
       ['submit', 'เมื่อมีการส่งตรวจ'],
@@ -1233,29 +1298,32 @@
     );
     keys.forEach(function (k) {
       var id = 'pref_' + k[0];
-      var row = el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0' }, [
+      panel.appendChild(el('label', { style: 'display:flex;gap:8px;align-items:center;margin:8px 0' }, [
         el('input', { type: 'checkbox', id: id, checked: current[k[0]] ? 'checked' : null }),
         document.createTextNode(k[1])
-      ]);
-      panel.appendChild(row);
+      ]));
     });
     panel.appendChild(el('button', {
       className: 'btn btn-primary', type: 'button', style: 'margin-top:12px',
       onClick: async function () {
-        var email = ($('#notify_email') && $('#notify_email').value || '').trim();
-        if (!email) {
-          toast('กรุณาระบุอีเมลสำหรับแจ้งเตือน', 'err');
+        var emails = collectNotifyEmailsFromDom(emailList);
+        if (!emails.length) {
+          toast('กรุณาระบุอีเมลอย่างน้อย 1 ที่', 'err');
           return;
         }
-        var payload = { email: email };
+        if (emails.length > MAX_NOTIFY_EMAILS) {
+          toast('เพิ่มได้ไม่เกิน ' + MAX_NOTIFY_EMAILS + ' อีเมล', 'err');
+          return;
+        }
+        var payload = { emails: emails };
         keys.forEach(function (k) { payload[k[0]] = !!$('#pref_' + k[0]).checked; });
         try {
           var result = await api('apiUpdateEmailPreferences', getToken(), payload);
           if (result.user) {
-            state.session.email = result.user.email || email;
+            state.session.email = result.user.email || emails[0];
             state.session.emailPreferences = result.user.emailPreferences || payload;
           }
-          toast('บันทึกอีเมลและการแจ้งเตือนแล้ว', 'ok');
+          toast('บันทึก ' + emails.length + ' อีเมลและการแจ้งเตือนแล้ว', 'ok');
         } catch (e) { toast(e.message, 'err'); }
       }
     }, ['บันทึก']));

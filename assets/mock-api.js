@@ -185,9 +185,55 @@
     return out;
   }
 
+  var MAX_NOTIFICATION_EMAILS = 10;
+
+  function isValidEmail(address) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(address || '').trim());
+  }
+
+  function normalizeNotificationEmails(input, fallbackSingle) {
+    var list = [];
+    if (Array.isArray(input)) list = input;
+    else if (input) list = [input];
+    else if (fallbackSingle) list = [fallbackSingle];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var raw = String(list[i] || '').trim();
+      if (!raw) continue;
+      var key = raw.toLowerCase();
+      if (seen[key]) continue;
+      if (!isValidEmail(raw)) throw new Error('รูปแบบอีเมลไม่ถูกต้อง: ' + raw);
+      seen[key] = true;
+      out.push(raw);
+    }
+    if (out.length > MAX_NOTIFICATION_EMAILS) {
+      throw new Error('รับแจ้งเตือนได้ไม่เกิน ' + MAX_NOTIFICATION_EMAILS + ' อีเมล');
+    }
+    return out;
+  }
+
+  function normalizeEmailPreferences(prefs, fallbackEmail) {
+    prefs = prefs || {};
+    var normalized = {
+      submit: prefs.submit !== false,
+      revision: prefs.revision !== false,
+      accept: prefs.accept !== false,
+      comment: prefs.comment !== false,
+      emails: []
+    };
+    if (prefs.emails && prefs.emails.length) {
+      normalized.emails = normalizeNotificationEmails(prefs.emails);
+    } else if (fallbackEmail) {
+      normalized.emails = normalizeNotificationEmails([fallbackEmail]);
+    }
+    return normalized;
+  }
+
   function sanitizeUser(u) {
     if (!u) return null;
     var n = ensureUserNameParts(u);
+    var emailPrefs = normalizeEmailPreferences(n.emailPreferences, n.email);
     return {
       id: n.id,
       employeeId: n.employeeId,
@@ -195,8 +241,8 @@
       lastName: n.lastName || '',
       name: n.name || buildUserFullName(n.firstName, n.lastName),
       role: n.role,
-      email: n.email,
-      emailPreferences: n.emailPreferences || {},
+      email: emailPrefs.emails.length ? emailPrefs.emails[0] : (n.email || ''),
+      emailPreferences: emailPrefs,
       active: n.active !== false,
       createdAt: n.createdAt || '',
       updatedAt: n.updatedAt || ''
@@ -214,14 +260,15 @@
   function createSession(user) {
     var sessions = loadSessions();
     var token = uid('tok');
+    var emailPrefs = normalizeEmailPreferences(user.emailPreferences, user.email);
     var payload = {
       token: token,
       userId: user.id,
       employeeId: user.employeeId,
       name: user.name,
       role: user.role,
-      email: user.email || '',
-      emailPreferences: user.emailPreferences || {},
+      email: emailPrefs.emails.length ? emailPrefs.emails[0] : (user.email || ''),
+      emailPreferences: emailPrefs,
       createdAt: nowIso()
     };
     sessions[token] = payload;
@@ -663,7 +710,11 @@
     var session = token ? getSession(token) : null;
     if (session) {
       var user = getUserById(db, session.userId);
-      if (user) session.emailPreferences = user.emailPreferences || session.emailPreferences;
+      if (user) {
+        var sanitized = sanitizeUser(user);
+        session.email = sanitized.email;
+        session.emailPreferences = sanitized.emailPreferences;
+      }
     }
     return ok({
       session: session,
@@ -1357,37 +1408,41 @@
   function apiUpdateEmailPreferences(token, payload) {
     var session = requireSession(token);
     var db = loadDb();
-    if (!getUserById(db, session.userId)) throw new Error('ไม่พบผู้ใช้');
+    var user = getUserById(db, session.userId);
+    if (!user) throw new Error('ไม่พบผู้ใช้');
     payload = payload || {};
+    var existing = normalizeEmailPreferences(user.emailPreferences, user.email);
+    var emails = existing.emails.slice();
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'emails')) {
+      emails = normalizeNotificationEmails(payload.emails);
+    } else if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
+      emails = normalizeNotificationEmails([payload.email]);
+    }
+    if (!emails.length) throw new Error('กรุณาระบุอีเมลอย่างน้อย 1 ที่');
+
     var prefs = {
-      submit: !!payload.submit,
-      revision: !!payload.revision,
-      accept: !!payload.accept,
-      comment: !!payload.comment
+      submit: Object.prototype.hasOwnProperty.call(payload, 'submit') ? !!payload.submit : existing.submit,
+      revision: Object.prototype.hasOwnProperty.call(payload, 'revision') ? !!payload.revision : existing.revision,
+      accept: Object.prototype.hasOwnProperty.call(payload, 'accept') ? !!payload.accept : existing.accept,
+      comment: Object.prototype.hasOwnProperty.call(payload, 'comment') ? !!payload.comment : existing.comment,
+      emails: emails
     };
-    var patch = {
+
+    var updated = updateById(db, 'Users', session.userId, {
+      email: emails[0],
       emailPreferences: prefs,
       updatedAt: nowIso()
-    };
-    if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
-      var email = String(payload.email || '').trim();
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        throw new Error('รูปแบบอีเมลไม่ถูกต้อง');
-      }
-      patch.email = email;
-    }
-    var updated = updateById(db, 'Users', session.userId, patch);
+    });
     writeAudit(db, session.userId, 'UPDATE_EMAIL_PREFS', 'User', session.userId, {
-      email: updated.email || '',
+      emails: emails,
       preferences: prefs
     });
     saveDb(db);
     var sessions = loadSessions();
     if (sessions[token]) {
       sessions[token].emailPreferences = prefs;
-      if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
-        sessions[token].email = updated.email || '';
-      }
+      sessions[token].email = emails[0];
     }
     saveSessions(sessions);
     return ok({ user: sanitizeUser(updated) });

@@ -609,6 +609,31 @@ table.data tr.clickable { cursor: pointer; }
   line-height: 1.45;
   word-break: break-all;
 }
+.notify-email-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.notify-email-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.notify-email-num {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--pea-purple);
+  min-width: 1.4rem;
+}
+.notify-email-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 
 @media (max-width: 860px) {
   .project-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
