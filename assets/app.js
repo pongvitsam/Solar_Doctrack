@@ -846,7 +846,7 @@
     var currentFiles = (iv.currentFiles && iv.currentFiles.length)
       ? iv.currentFiles
       : (iv.currentFile ? [iv.currentFile] : []);
-    var replacing = currentFiles.length > 0;
+    var canEditFiles = isKHT() && (state.project.project.status === 'Draft' || state.project.project.status === 'NeedsRevision');
     var left = el('div', null, [
       el('div', { className: 'title', text: iv.title + (iv.item.required ? ' *' : '') }),
       el('div', { className: 'cat', text: iv.category }),
@@ -855,12 +855,21 @@
     if (currentFiles.length) {
       var cur = el('ul', { className: 'current-file-list' });
       currentFiles.forEach(function (f) {
-        cur.appendChild(el('li', null, [
-          document.createTextNode(f.fileName + ' · v' + f.version + ' · ' + formatBytes(f.sizeBytes) + ' '),
+        var actions = el('span', { className: 'file-inline-actions' }, [
           el('button', {
             className: 'btn btn-ghost btn-sm', type: 'button',
             onClick: function () { openFile(f.id); }
           }, ['เปิด'])
+        ]);
+        if (canEditFiles) {
+          actions.appendChild(el('button', {
+            className: 'btn btn-danger btn-sm', type: 'button',
+            onClick: function () { openDeleteFileModal(f, iv); }
+          }, ['ลบ']));
+        }
+        cur.appendChild(el('li', null, [
+          document.createTextNode(f.fileName + ' · v' + f.version + ' · ' + formatBytes(f.sizeBytes) + ' '),
+          actions
         ]));
         if (f.storagePath) {
           cur.appendChild(el('li', { className: 'hint storage-path-hint', text: 'OneDrive: ' + f.storagePath }));
@@ -872,9 +881,11 @@
       var ul = el('ul', { className: 'version-list' });
       iv.versions.forEach(function (f) {
         if (currentFiles.some(function (c) { return c.id === f.id; })) return;
+        var extra = f.deletedAt
+          ? (' · ลบแล้ว: ' + (f.deleteReason || '—') + ' · ' + fmtDate(f.deletedAt))
+          : (f.reason ? (' · ' + f.reason) : '');
         ul.appendChild(el('li', null, [
-          document.createTextNode('v' + f.version + ' · ' + f.fileName + ' · ' + fmtDate(f.uploadedAt) +
-            (f.reason ? ' · เหตุผล: ' + f.reason : '') + ' '),
+          document.createTextNode('v' + f.version + ' · ' + f.fileName + ' · ' + fmtDate(f.uploadedAt) + extra + ' '),
           el('button', {
             className: 'btn btn-ghost btn-sm', type: 'button',
             onClick: function () { openFile(f.id); }
@@ -886,11 +897,11 @@
     row.appendChild(left);
 
     var right = el('div', { style: 'display:grid;gap:6px' });
-    if (isKHT() && (state.project.project.status === 'Draft' || state.project.project.status === 'NeedsRevision')) {
+    if (canEditFiles) {
       right.appendChild(el('button', {
         className: 'btn btn-primary btn-sm', type: 'button',
         onClick: function () { openUploadModal(iv, site); }
-      }, [replacing ? 'เพิ่ม/เปลี่ยนไฟล์' : 'อัปโหลด']));
+      }, [currentFiles.length ? 'เพิ่มไฟล์' : 'อัปโหลด']));
     }
     row.appendChild(right);
     return row;
@@ -1532,43 +1543,58 @@
     });
   }
 
+  function openDeleteFileModal(file, iv) {
+    openModal('ลบไฟล์', function (body) {
+      body.appendChild(el('p', { className: 'hint', text: (iv.title || 'เอกสาร') + ' · ' + file.fileName }));
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'เหตุผลในการลบ *' }),
+        el('textarea', { id: 'm_del_reason', required: 'required', placeholder: 'ระบุเหตุผลที่ลบไฟล์นี้' })
+      ]));
+      body.appendChild(el('p', { className: 'auth-warn', text: 'การลบจะบันทึกใน Audit — การเพิ่มไฟล์ใหม่ไม่ต้องระบุเหตุผล' }));
+    }, async function () {
+      var reason = ($('#m_del_reason') && $('#m_del_reason').value || '').trim();
+      if (!reason) {
+        toast('ต้องระบุเหตุผลเมื่อลบไฟล์', 'err');
+        return;
+      }
+      if (!confirm('ยืนยันลบไฟล์ ' + file.fileName + '?')) return;
+      try {
+        await withLoad(function () {
+          return api('apiDeleteFile', getToken(), { fileId: file.id, reason: reason });
+        });
+        toast('ลบไฟล์แล้ว', 'ok');
+        closeModal();
+        loadRouteData();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  }
+
   function openUploadModal(iv, site) {
-    var currentFiles = (iv.currentFiles && iv.currentFiles.length)
-      ? iv.currentFiles
-      : (iv.currentFile ? [iv.currentFile] : []);
-    var replacing = currentFiles.length > 0;
     var contract = state.project && state.project.contract;
     var project = state.project && state.project.project;
     var pathHint = contract && project
       ? 'PEA-Solar-DocTrack / ' + contract.contractNo + ' / ' + project.projectCode + '_… / ' + site.siteCode + '_… / … / v{n} / ไฟล์'
       : '';
-    openModal(replacing ? 'เพิ่ม/เปลี่ยนไฟล์' : 'อัปโหลดไฟล์', function (body) {
+    openModal('เพิ่มไฟล์', function (body) {
       body.appendChild(el('p', { className: 'hint', text: iv.title + ' · ' + site.name }));
       if (pathHint) {
         body.appendChild(el('p', { className: 'hint storage-path-hint', text: 'โครงสร้างโฟลเดอร์ OneDrive: ' + pathHint }));
       }
       body.appendChild(el('div', { className: 'field' }, [
-        el('label', { text: 'เลือกไฟล์ (ได้หลายไฟล์พร้อมกัน)' }),
+        el('label', { text: 'เลือกไฟล์ (ได้หลายไฟล์พร้อมกัน — ไม่ต้องระบุเหตุผล)' }),
         el('input', { type: 'file', id: 'm_file', multiple: 'multiple' })
       ]));
       body.appendChild(el('ul', { id: 'm_filePreview', className: 'upload-file-preview' }));
-      body.appendChild(el('div', { className: 'field' }, [
-        el('label', { text: replacing ? 'เหตุผลที่เปลี่ยน/เพิ่มไฟล์ *' : 'หมายเหตุ (ถ้ามี)' }),
-        el('textarea', { id: 'm_reason', required: replacing ? 'required' : null })
-      ]));
       body.appendChild(el('p', { className: 'auth-warn', text:
-        'ไม่จำกัดขนาดไฟล์ในระบบ — ไม่ส่งไบนารีผ่าน GAS/mock; production ใช้ Microsoft Graph แบบ chunk upload ตาม path โครงการด้านบน' }));
+        'ไม่จำกัดขนาดไฟล์ — ไม่ส่งไบนารีผ่าน mock; หากต้องการเอาไฟล์ออกให้กด «ลบ» และระบุเหตุผล' }));
     }, async function () {
       var input = $('#m_file');
       var files = input.files ? Array.prototype.slice.call(input.files) : [];
       if (!files.length) { toast('กรุณาเลือกไฟล์', 'err'); return; }
-      var reason = $('#m_reason').value.trim();
-      if (replacing && !reason) { toast('ต้องระบุเหตุผลเมื่อเปลี่ยนไฟล์', 'err'); return; }
       try {
         var res = await withLoad(function () {
           return api('apiUploadFiles', getToken(), {
             checklistItemId: iv.item.id,
-            reason: reason,
             files: files.map(function (file) {
               return {
                 fileName: file.name,
@@ -1579,7 +1605,7 @@
           });
         });
         var n = (res.files && res.files.length) || files.length;
-        toast('อัปโหลด ' + n + ' ไฟล์แล้ว' + (res.storagePathExample ? ' · ' + res.storagePathExample : ''), 'ok');
+        toast('เพิ่ม ' + n + ' ไฟล์แล้ว' + (res.storagePathExample ? ' · ' + res.storagePathExample : ''), 'ok');
         closeModal();
         loadRouteData();
       } catch (e) { toast(e.message, 'err'); }

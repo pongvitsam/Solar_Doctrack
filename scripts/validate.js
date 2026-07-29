@@ -148,8 +148,12 @@ console.log('4) Mock API seed + workflow (vm + localStorage polyfill)');
                 checklistItemId: required[0].item.id,
                 fileName: 'doc-1-v2.pdf',
                 mimeType: 'application/pdf',
-                sizeBytes: 2000,
-                reason: 'แก้ไขตามข้อตรวจภายใน'
+                sizeBytes: 2000
+              });
+            }).then(function (v2) {
+              return API.apiDeleteFile(tok, {
+                fileId: v2.file.id,
+                reason: 'ลบเพื่อทดสอบ workflow'
               });
             }).then(function () {
               return API.apiSubmitProject(tok, prj.project.id);

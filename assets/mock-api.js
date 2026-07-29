@@ -1053,15 +1053,11 @@
     var existingCurrent = findWhere(db, 'Files', function (f) {
       return f.checklistItemId === item.id && f.isCurrent;
     });
-    if (existingCurrent.length && !String(payload.reason || '').trim()) {
-      throw new Error('ต้องระบุเหตุผลทุกครั้งที่เปลี่ยนไฟล์');
-    }
     var versions = findWhere(db, 'Files', function (f) { return f.checklistItemId === item.id; });
     var nextVersion = versions.reduce(function (m, f) { return Math.max(m, Number(f.version) || 0); }, 0) + 1;
-    existingCurrent.forEach(function (f) { updateById(db, 'Files', f.id, { isCurrent: false }); });
 
     var t = nowIso();
-    var reason = String(payload.reason || (existingCurrent.length ? '' : 'อัปโหลดครั้งแรก')).trim();
+    var uploadNote = String(payload.note || payload.reason || '').trim();
     var saved = [];
     var folderUrl = getFolderUrl(db);
 
@@ -1085,7 +1081,7 @@
         mimeType: f.mimeType || 'application/octet-stream',
         sizeBytes: Number(f.sizeBytes) || 0,
         version: nextVersion,
-        reason: reason,
+        reason: uploadNote || (existingCurrent.length ? 'เพิ่มไฟล์' : 'อัปโหลดครั้งแรก'),
         storageProvider: STORAGE.MOCK,
         storagePath: path,
         webUrl: folderUrl,
@@ -1097,7 +1093,7 @@
       writeAudit(db, session.userId, 'UPLOAD_FILE', 'File', file.id, {
         checklistItemId: item.id,
         version: nextVersion,
-        reason: reason,
+        reason: file.reason,
         fileName: file.fileName,
         storagePath: path,
         batchSize: fileList.length
@@ -1116,6 +1112,59 @@
       storageNote: 'Mock: metadata + path ตามลำดับโครงการ — รองรับหลายไฟล์/ขนาดใหญ่ (Graph upload จริง)',
       storagePathExample: saved[0] && saved[0].storagePath
     };
+  }
+
+  function refreshChecklistItemFileState(db, itemId) {
+    var currents = findWhere(db, 'Files', function (f) {
+      return f.checklistItemId === itemId && f.isCurrent;
+    });
+    var t = nowIso();
+    if (!currents.length) {
+      updateById(db, 'ChecklistItems', itemId, {
+        status: ITEM_STATUS.EMPTY,
+        currentFileId: '',
+        updatedAt: t
+      });
+      return;
+    }
+    updateById(db, 'ChecklistItems', itemId, {
+      status: ITEM_STATUS.UPLOADED,
+      currentFileId: currents[currents.length - 1].id,
+      updatedAt: t
+    });
+  }
+
+  function apiDeleteFile(token, payload) {
+    var session = requireSession(token);
+    requireRole(session, [ROLES.KHT]);
+    requireFields(payload || {}, ['fileId', 'reason']);
+    var reason = String(payload.reason || '').trim();
+    if (!reason) throw new Error('ต้องระบุเหตุผลเมื่อลบไฟล์');
+    var db = loadDb();
+    var file = findById(db, 'Files', payload.fileId);
+    if (!file) throw new Error('ไม่พบไฟล์');
+    if (!file.isCurrent) throw new Error('ไฟล์นี้ถูกลบหรือแทนที่ไปแล้ว');
+    var item = findById(db, 'ChecklistItems', file.checklistItemId);
+    if (!item) throw new Error('ไม่พบรายการเอกสาร');
+    var site = findById(db, 'Sites', item.siteId);
+    var project = findById(db, 'Projects', site.projectId);
+    assertProjectEditable(project);
+    var t = nowIso();
+    var updated = updateById(db, 'Files', file.id, {
+      isCurrent: false,
+      deleteReason: reason,
+      deletedAt: t,
+      deletedBy: session.userId
+    });
+    refreshChecklistItemFileState(db, item.id);
+    writeAudit(db, session.userId, 'DELETE_FILE', 'File', file.id, {
+      checklistItemId: item.id,
+      fileName: file.fileName,
+      reason: reason,
+      storagePath: file.storagePath || ''
+    });
+    saveDb(db);
+    return ok({ file: updated });
   }
 
   function apiUploadFiles(token, payload) {
@@ -1542,6 +1591,7 @@
     apiAddCustomChecklistItem: wrap(apiAddCustomChecklistItem),
     apiUploadFile: wrap(apiUploadFile),
     apiUploadFiles: wrap(apiUploadFiles),
+    apiDeleteFile: wrap(apiDeleteFile),
     apiOpenFile: wrap(apiOpenFile),
     apiSubmitProject: wrap(apiSubmitProject),
     apiRequestRevision: wrap(apiRequestRevision),
