@@ -157,7 +157,7 @@
             var boot = await api('apiGetBootstrap', getToken());
             state.session = boot.session;
           }
-        } else if (state.route === 'contracts') {
+        } else if (state.route === 'contracts' || state.route === 'contract') {
           state.dashboard = await api('apiGetDashboard', getToken());
         }
       });
@@ -253,7 +253,7 @@
   function navItems() {
     var items = [
       { id: 'dashboard', label: 'แดชบอร์ด' },
-      { id: 'contracts', label: 'สัญญา / โครงการ' },
+      { id: 'contracts', label: 'สัญญา' },
       { id: 'notifications', label: 'การแจ้งเตือน' },
       { id: 'email', label: 'การแจ้งเตือนอีเมล' }
     ];
@@ -283,7 +283,7 @@
     ]));
     navItems().forEach(function (n) {
       side.appendChild(el('button', {
-        className: 'nav-btn' + (state.route === n.id ? ' active' : ''),
+        className: 'nav-btn' + ((state.route === n.id || (n.id === 'contracts' && state.route === 'contract')) ? ' active' : ''),
         type: 'button',
         onClick: function () { navigate(n.id); }
       }, [n.label]));
@@ -308,7 +308,8 @@
   function renderTopbar() {
     var titles = {
       dashboard: 'แดชบอร์ดโครงการ',
-      contracts: 'สัญญาและโครงการ',
+      contracts: 'สัญญา',
+      contract: 'รายละเอียดสัญญา',
       project: 'รายละเอียดโครงการ',
       review: 'คิวตรวจเอกสาร (กธพ.)',
       notifications: 'การแจ้งเตือน',
@@ -326,14 +327,30 @@
       el('h2', { text: titles[state.route] || 'PEA Solar DocTrack' })
     ]));
     var actions = el('div', { className: 'topbar-actions' });
-    if (state.route === 'dashboard' || state.route === 'contracts') {
+    if (state.route === 'dashboard') {
       if (isKHT()) {
         actions.appendChild(el('button', { className: 'btn btn-gold btn-sm', type: 'button', onClick: openContractModal }, ['+ สัญญา']));
         actions.appendChild(el('button', { className: 'btn btn-primary btn-sm', type: 'button', onClick: openProjectModal }, ['+ โครงการ']));
       }
     }
+    if (state.route === 'contracts' && isKHT()) {
+      actions.appendChild(el('button', { className: 'btn btn-gold btn-sm', type: 'button', onClick: openContractModal }, ['+ สัญญา']));
+    }
+    if (state.route === 'contract') {
+      actions.appendChild(el('button', { className: 'btn btn-ghost btn-sm', type: 'button', onClick: function () { navigate('contracts'); } }, ['← กลับรายการสัญญา']));
+      if (isKHT()) {
+        actions.appendChild(el('button', { className: 'btn btn-primary btn-sm', type: 'button', onClick: openProjectModal }, ['+ โครงการในสัญญานี้']));
+      }
+    }
     if (state.route === 'project' && state.project) {
-      actions.appendChild(el('button', { className: 'btn btn-ghost btn-sm', type: 'button', onClick: function () { navigate('dashboard'); } }, ['← กลับ']));
+      var backContractId = state.project.project && state.project.project.contractId;
+      actions.appendChild(el('button', {
+        className: 'btn btn-ghost btn-sm', type: 'button',
+        onClick: function () {
+          if (backContractId) navigate('contract', { id: backContractId });
+          else navigate('dashboard');
+        }
+      }, ['← กลับ']));
     }
     bar.appendChild(actions);
     return bar;
@@ -343,6 +360,7 @@
     switch (state.route) {
       case 'dashboard': return renderDashboard();
       case 'contracts': return renderContracts();
+      case 'contract': return renderContractDetail();
       case 'project': return renderProject();
       case 'review': return renderReview();
       case 'notifications': return renderNotifications();
@@ -358,11 +376,12 @@
     return el('span', { className: 'chip chip-' + status, text: STATUS_LABEL[status] || status });
   }
 
-  function filteredProjects() {
+  function filteredProjects(contractId) {
     var list = (state.dashboard && state.dashboard.projects) || [];
     var q = (state.filters.q || '').toLowerCase();
     var st = state.filters.status;
     var out = list.filter(function (p) {
+      if (contractId && p.project.contractId !== contractId) return false;
       if (st && p.project.status !== st) return false;
       if (!q) return true;
       var hay = [p.project.name, p.project.projectCode, p.contract && p.contract.contractNo, p.owner && p.owner.name]
@@ -378,10 +397,12 @@
     return out;
   }
 
-  function renderToolbar() {
+  function renderToolbar(opts) {
+    opts = opts || {};
     var bar = el('div', { className: 'toolbar' });
     var search = el('input', {
-      className: 'search-input', placeholder: 'ค้นหาโครงการ / สัญญา / ผู้รับผิดชอบ',
+      className: 'search-input',
+      placeholder: opts.searchPlaceholder || 'ค้นหาโครงการ / สัญญา / ผู้รับผิดชอบ',
       value: state.filters.q || ''
     });
     search.addEventListener('input', function () {
@@ -452,29 +473,35 @@
     return wrap;
   }
 
-  function renderProjectList(list) {
+  function renderProjectList(list, hideContract) {
     if (!list.length) return el('div', { className: 'empty', text: 'ไม่พบโครงการตามเงื่อนไข' });
     if (state.viewMode === 'table') {
       var wrap = el('div', { className: 'table-wrap' });
       var table = el('table', { className: 'data' });
+      var headers = hideContract
+        ? ['รหัส', 'ชื่อ', 'สถานะ', 'ความคืบหน้า', 'อัปเดต']
+        : ['รหัส', 'ชื่อ', 'สัญญา', 'สถานะ', 'ความคืบหน้า', 'อัปเดต'];
       table.appendChild(el('thead', null, [
-        el('tr', null, ['รหัส', 'ชื่อ', 'สัญญา', 'สถานะ', 'ความคืบหน้า', 'อัปเดต'].map(function (h) {
+        el('tr', null, headers.map(function (h) {
           return el('th', { text: h });
         }))
       ]));
       var tb = el('tbody');
       list.forEach(function (p) {
-        var tr = el('tr', {
-          className: 'clickable',
-          onClick: function () { navigate('project', { id: p.project.id }); }
-        }, [
+        var cells = [
           el('td', { text: p.project.projectCode }),
-          el('td', { text: p.project.name }),
-          el('td', { text: (p.contract && p.contract.contractNo) || '—' }),
+          el('td', { text: p.project.name })
+        ];
+        if (!hideContract) cells.push(el('td', { text: (p.contract && p.contract.contractNo) || '—' }));
+        cells.push(
           el('td', null, [chip(p.project.status)]),
           el('td', { text: p.requiredDone + '/' + p.requiredTotal + ' (' + p.percent + '%)' }),
           el('td', { text: fmtDate(p.project.updatedAt) })
-        ]);
+        );
+        var tr = el('tr', {
+          className: 'clickable',
+          onClick: function () { navigate('project', { id: p.project.id }); }
+        }, cells);
         tb.appendChild(tr);
       });
       table.appendChild(tb);
@@ -502,17 +529,32 @@
     return cards;
   }
 
+  function countProjectsForContract_(contractId) {
+    return filteredProjects(contractId).length;
+  }
+
+  function getContractById_(contractId) {
+    var contracts = (state.dashboard && state.dashboard.contracts) || [];
+    for (var i = 0; i < contracts.length; i++) {
+      if (String(contracts[i].id) === String(contractId)) return contracts[i];
+    }
+    return null;
+  }
+
   function renderContracts() {
     if (!state.dashboard) return el('div', { className: 'loading-box', text: 'กำลังโหลด…' });
     var wrap = el('div');
     var panel = el('div', { className: 'panel' });
-    panel.appendChild(el('div', { className: 'panel-h' }, [el('h3', { text: 'สัญญา' })]));
+    panel.appendChild(el('div', { className: 'panel-h' }, [
+      el('h3', { text: 'สัญญา' }),
+      el('span', { className: 'hint', text: 'คลิกแถวเพื่อดูโครงการในสัญญา' })
+    ]));
     var contracts = state.dashboard.contracts || [];
     if (!contracts.length) panel.appendChild(el('div', { className: 'empty', text: 'ยังไม่มีสัญญา' }));
     else {
       var tw = el('div', { className: 'table-wrap' });
       var table = el('table', { className: 'data' });
-      table.appendChild(el('thead', null, [el('tr', null, ['เลขที่', 'ชื่อ', 'อัปเดต', ''].map(function (h) { return el('th', { text: h }); }))]));
+      table.appendChild(el('thead', null, [el('tr', null, ['เลขที่', 'ชื่อ', 'โครงการ', 'อัปเดต', ''].map(function (h) { return el('th', { text: h }); }))]));
       var tb = el('tbody');
       contracts.forEach(function (c) {
         var actions = el('td');
@@ -522,9 +564,13 @@
             onClick: function (ev) { ev.stopPropagation(); openContractModal(c); }
           }, ['แก้ไข']));
         }
-        tb.appendChild(el('tr', null, [
+        tb.appendChild(el('tr', {
+          className: 'clickable',
+          onClick: function () { navigate('contract', { id: c.id }); }
+        }, [
           el('td', { text: c.contractNo }),
           el('td', { text: c.title }),
+          el('td', { text: String(countProjectsForContract_(c.id)) }),
           el('td', { text: fmtDate(c.updatedAt) }),
           actions
         ]));
@@ -534,12 +580,41 @@
       panel.appendChild(tw);
     }
     wrap.appendChild(panel);
+    return wrap;
+  }
 
-    var p2 = el('div', { className: 'panel' });
-    p2.appendChild(el('div', { className: 'panel-h' }, [el('h3', { text: 'โครงการภายใต้สัญญา' })]));
-    p2.appendChild(renderToolbar());
-    p2.appendChild(renderProjectList(filteredProjects()));
-    wrap.appendChild(p2);
+  function renderContractDetail() {
+    if (!state.dashboard) return el('div', { className: 'loading-box', text: 'กำลังโหลด…' });
+    var contract = getContractById_(state.routeParams.id);
+    if (!contract) return el('div', { className: 'error-box', text: 'ไม่พบสัญญา' });
+
+    var wrap = el('div');
+    var head = el('div', { className: 'panel' });
+    var headRow = el('div', { className: 'panel-h' }, [
+      el('div', null, [
+        el('h3', { text: contract.title }),
+        el('div', { className: 'hint', text: contract.contractNo })
+      ])
+    ]);
+    if (isKHT() || isGTHP()) {
+      headRow.appendChild(el('button', {
+        className: 'btn btn-ghost btn-sm', type: 'button',
+        onClick: function () { openContractModal(contract); }
+      }, ['แก้ไขสัญญา']));
+    }
+    head.appendChild(headRow);
+    head.appendChild(el('p', { className: 'hint', text: contract.description || '—' }));
+    head.appendChild(el('p', { className: 'meta', text: 'อัปเดตล่าสุด: ' + fmtDate(contract.updatedAt) }));
+    wrap.appendChild(head);
+
+    var panel = el('div', { className: 'panel' });
+    panel.appendChild(el('div', { className: 'panel-h' }, [
+      el('h3', { text: 'โครงการในสัญญานี้' }),
+      el('span', { className: 'hint', text: countProjectsForContract_(contract.id) + ' โครงการ' })
+    ]));
+    panel.appendChild(renderToolbar({ searchPlaceholder: 'ค้นหาโครงการ / ผู้รับผิดชอบ' }));
+    panel.appendChild(renderProjectList(filteredProjects(contract.id), true));
+    wrap.appendChild(panel);
     return wrap;
   }
 
@@ -994,11 +1069,15 @@
 
   function openProjectModal(existing) {
     var contracts = (state.dashboard && state.dashboard.contracts) || (state.project && state.project.contract ? [state.project.contract] : []);
+    var defaultContractId = (existing && existing.contractId) ||
+      (state.route === 'contract' && state.routeParams.id) ||
+      (state.project && state.project.project && state.project.project.contractId) ||
+      '';
     openModal(existing ? 'แก้ไขโครงการ' : 'สร้างโครงการ', function (body) {
       var sel = el('select', { id: 'm_contractId' });
       contracts.forEach(function (c) {
         var o = el('option', { value: c.id, text: c.contractNo + ' — ' + c.title });
-        if (existing && existing.contractId === c.id) o.selected = true;
+        if (defaultContractId && String(c.id) === String(defaultContractId)) o.selected = true;
         sel.appendChild(o);
       });
       body.appendChild(el('div', { className: 'field' }, [el('label', { text: 'สัญญา *' }), sel]));
