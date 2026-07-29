@@ -1,0 +1,14 @@
+{
+  "name": "pea-solar-doctrack-static",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static PEA Solar DocTrack frontend for GitHub Pages (localStorage mock API)",
+  "scripts": {
+    "test": "node scripts/validate.js",
+    "validate": "node scripts/validate.js",
+    "serve": "npx --yes serve . -p 4173"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
