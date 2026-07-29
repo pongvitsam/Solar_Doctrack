@@ -11,7 +11,7 @@
     session: null,
     route: 'dashboard',
     routeParams: {},
-    viewMode: 'cards',
+    viewMode: 'table',
     dashboard: null,
     project: null,
     reviewQueue: null,
@@ -72,6 +72,37 @@
       .replace(/"/g, '&quot;');
   }
 
+  var THAI_MONTHS_FULL = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  ];
+
+  function parseDateFlexible(iso) {
+    if (!iso) return null;
+    var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function fmtDateThaiBE(iso) {
+    var d = parseDateFlexible(iso);
+    if (!d) return '—';
+    return d.getDate() + ' ' + THAI_MONTHS_FULL[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+  }
+
+  function toDateInputValue(iso) {
+    var d = parseDateFlexible(iso);
+    if (!d) return '';
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function elDateBE(iso) {
+    return el('span', { className: 'date-be-wrap' }, [
+      el('span', { className: 'date-be', text: fmtDateThaiBE(iso) })
+    ]);
+  }
+
   function fmtDate(iso) {
     if (!iso) return '—';
     try {
@@ -114,6 +145,50 @@
 
   function isGTHP() { return state.session && state.session.role === 'GTHP'; }
   function isKHT() { return state.session && state.session.role === 'KHT'; }
+
+  var LOGIN_DEMO_FALLBACK = [
+    { employeeId: 'KHT001', role: 'KHT', name: 'สมชาย กขท.' },
+    { employeeId: 'GTHP001', role: 'GTHP', name: 'อรุณี กธพ.' }
+  ];
+
+  function roleLabelTh(role) {
+    if (role === 'KHT') return 'กขท.';
+    if (role === 'GTHP') return 'กธพ.';
+    return role || '—';
+  }
+
+  function getLoginDemoAccounts() {
+    var list = (state.boot && state.boot.demoAccounts) || LOGIN_DEMO_FALLBACK;
+    if (!list.length) return LOGIN_DEMO_FALLBACK;
+    return list;
+  }
+
+  function renderLoginDemoPanel() {
+    var wrap = el('div', { className: 'demo-login-panel' });
+    wrap.appendChild(el('div', { className: 'demo-login-title', text: 'บัญชีตัวอย่าง — เลือกกองก่อนเข้าใช้งาน' }));
+    var grid = el('div', { className: 'demo-login-grid' });
+    getLoginDemoAccounts().forEach(function (a) {
+      grid.appendChild(el('button', {
+        type: 'button',
+        className: 'demo-login-card demo-login-card--' + String(a.role || '').toLowerCase(),
+        onClick: function () {
+          var inp = $('#empId');
+          if (inp) {
+            inp.value = a.employeeId;
+            inp.focus();
+          }
+        }
+      }, [
+        el('span', { className: 'demo-login-role', text: roleLabelTh(a.role) }),
+        el('span', { className: 'demo-login-id', text: a.employeeId }),
+        el('span', { className: 'demo-login-name', text: a.name || '' }),
+        el('span', { className: 'demo-login-action', text: 'คลิกเพื่อใส่รหัส' })
+      ]));
+    });
+    wrap.appendChild(grid);
+    wrap.appendChild(el('p', { className: 'hint demo-login-hint', text: 'จากนั้นกด «เข้าสู่ระบบ» (รหัสอื่นในระบบยังใช้ได้ตามปกติ)' }));
+    return wrap;
+  }
 
   function setUnreadNotifications(count) {
     state.unreadNotifications = Math.max(0, Number(count) || 0);
@@ -223,17 +298,8 @@
       el('h1', { text: 'Solar DocTrack' }),
       el('p', { text: 'ติดตามเอกสารโครงการโซลาร์รูฟท็อป' })
     ]));
+    card.appendChild(renderLoginDemoPanel());
     card.appendChild(el('div', { className: 'auth-warn', text: (state.boot && state.boot.authWarning) || '' }));
-
-    var demos = el('div', { className: 'demo-accounts' });
-    ((state.boot && state.boot.demoAccounts) || []).forEach(function (a) {
-      demos.appendChild(el('button', {
-        className: 'demo-chip', type: 'button',
-        onClick: function () { $('#empId').value = a.employeeId; }
-      }, [a.employeeId + ' · ' + a.role]));
-    });
-    card.appendChild(el('div', { className: 'hint', text: 'บัญชีตัวอย่าง (คลิกเพื่อใส่รหัส):' }));
-    card.appendChild(demos);
 
     var form = el('form', {
       onSubmit: function (ev) {
@@ -294,7 +360,7 @@
     ];
     if (isGTHP()) {
       items.splice(2, 0, { id: 'review', label: 'คิวตรวจเอกสาร' });
-      items.push({ id: 'users', label: 'จัดการผู้ใช้' });
+      items.push({ id: 'users', label: 'รหัสเข้าใช้งาน' });
       items.push({ id: 'audit', label: 'Audit Log' });
       items.push({ id: 'settings', label: 'ตั้งค่า' });
     }
@@ -348,7 +414,7 @@
       project: 'รายละเอียดโครงการ',
       review: 'คิวตรวจเอกสาร (กธพ.)',
       notifications: 'การแจ้งเตือน',
-      users: 'จัดการผู้ใช้',
+      users: 'รหัสเข้าใช้งาน',
       audit: 'Audit Log',
       settings: 'ตั้งค่าระบบ',
       email: 'การตั้งค่าอีเมล'
@@ -514,32 +580,32 @@
     if (!list.length) return el('div', { className: 'empty', text: 'ไม่พบโครงการตามเงื่อนไข' });
     if (state.viewMode === 'table') {
       var wrap = el('div', { className: 'table-wrap' });
-      var table = el('table', { className: 'data' });
+      var table = el('table', { className: 'data project-summary-table' });
       var headers = hideContract
-        ? ['รหัส', 'ชื่อ', 'สถานะ', 'ความคืบหน้า', 'อัปเดต']
-        : ['รหัส', 'ชื่อ', 'สัญญา', 'สถานะ', 'ความคืบหน้า', 'อัปเดต'];
+        ? ['ชื่อโครงการ', 'จำนวนสถานที่', 'วันที่ลงนามในสัญญา', 'สถานะ']
+        : ['เลขที่สัญญา', 'ชื่อโครงการ', 'จำนวนสถานที่', 'วันที่ลงนามในสัญญา', 'สถานะ'];
       table.appendChild(el('thead', null, [
-        el('tr', null, headers.map(function (h) {
-          return el('th', { text: h });
-        }))
+        el('tr', null, headers.map(function (h) { return el('th', { text: h }); }))
       ]));
       var tb = el('tbody');
       list.forEach(function (p) {
-        var cells = [
-          el('td', { text: p.project.projectCode }),
-          el('td', { text: p.project.name })
-        ];
-        if (!hideContract) cells.push(el('td', { text: (p.contract && p.contract.contractNo) || '—' }));
+        var cells = [];
+        if (!hideContract) {
+          cells.push(el('td', { text: (p.contract && p.contract.contractNo) || '—' }));
+        }
         cells.push(
-          el('td', null, [chip(p.project.status)]),
-          el('td', { text: p.requiredDone + '/' + p.requiredTotal + ' (' + p.percent + '%)' }),
-          el('td', { text: fmtDate(p.project.updatedAt) })
+          el('td', null, [
+            el('strong', { text: p.project.name }),
+            el('div', { className: 'hint', text: p.project.projectCode })
+          ]),
+          el('td', { className: 'num-cell', text: String(p.siteCount != null ? p.siteCount : 0) + ' แห่ง' }),
+          el('td', null, [elDateBE(p.contract && p.contract.signedAt)]),
+          el('td', null, [chip(p.project.status)])
         );
-        var tr = el('tr', {
+        tb.appendChild(el('tr', {
           className: 'clickable',
           onClick: function () { navigate('project', { id: p.project.id }); }
-        }, cells);
-        tb.appendChild(tr);
+        }, cells));
       });
       table.appendChild(tb);
       wrap.appendChild(table);
@@ -555,12 +621,11 @@
           el('h4', { text: p.project.name }),
           chip(p.project.status)
         ]),
-        el('div', { className: 'meta', html:
-          escapeHtml(p.project.projectCode) + ' · ' + escapeHtml((p.contract && p.contract.contractNo) || '—') +
-          '<br>พื้นที่ ' + p.siteCount + ' · เจ้าของ ' + escapeHtml((p.owner && p.owner.name) || '—')
-        }),
+        el('div', { className: 'meta', text: 'เลขที่สัญญา ' + ((p.contract && p.contract.contractNo) || '—') }),
+        el('div', { className: 'meta', text: 'จำนวนสถานที่ ' + (p.siteCount != null ? p.siteCount : 0) + ' แห่ง' }),
+        el('div', { style: 'margin:8px 0' }, [elDateBE(p.contract && p.contract.signedAt)]),
         el('div', { className: 'progress' }, [el('span', { style: 'width:' + p.percent + '%' })]),
-        el('div', { className: 'meta', text: 'บังคับครบ ' + p.requiredDone + '/' + p.requiredTotal })
+        el('div', { className: 'meta', text: 'ความคืบหน้าเอกสาร ' + p.requiredDone + '/' + p.requiredTotal })
       ]));
     });
     return cards;
@@ -591,7 +656,7 @@
     else {
       var tw = el('div', { className: 'table-wrap' });
       var table = el('table', { className: 'data' });
-      table.appendChild(el('thead', null, [el('tr', null, ['เลขที่', 'ชื่อ', 'โครงการ', 'อัปเดต', ''].map(function (h) { return el('th', { text: h }); }))]));
+      table.appendChild(el('thead', null, [el('tr', null, ['เลขที่', 'ชื่อ', 'วันที่ลงนาม', 'โครงการ', ''].map(function (h) { return el('th', { text: h }); }))]));
       var tb = el('tbody');
       contracts.forEach(function (c) {
         var actions = el('td');
@@ -607,8 +672,8 @@
         }, [
           el('td', { text: c.contractNo }),
           el('td', { text: c.title }),
+          el('td', null, [elDateBE(c.signedAt)]),
           el('td', { text: String(countProjectsForContract_(c.id)) }),
-          el('td', { text: fmtDate(c.updatedAt) }),
           actions
         ]));
       });
@@ -641,6 +706,10 @@
     }
     head.appendChild(headRow);
     head.appendChild(el('p', { className: 'hint', text: contract.description || '—' }));
+    head.appendChild(el('div', { className: 'contract-meta-row' }, [
+      el('span', { className: 'hint', text: 'วันที่ลงนามในสัญญา' }),
+      elDateBE(contract.signedAt)
+    ]));
     head.appendChild(el('p', { className: 'meta', text: 'อัปเดตล่าสุด: ' + fmtDate(contract.updatedAt) }));
     wrap.appendChild(head);
 
@@ -667,6 +736,25 @@
         el('div', { className: 'hint', text: p.projectCode + ' · สัญญา ' + ((state.project.contract && state.project.contract.contractNo) || '—') })
       ]),
       chip(p.status)
+    ]));
+    var siteCount = (state.project.sites && state.project.sites.length) || 0;
+    head.appendChild(el('div', { className: 'project-summary-grid' }, [
+      el('div', { className: 'summary-item' }, [
+        el('div', { className: 'label', text: 'เลขที่สัญญา' }),
+        el('div', { className: 'value', text: (state.project.contract && state.project.contract.contractNo) || '—' })
+      ]),
+      el('div', { className: 'summary-item' }, [
+        el('div', { className: 'label', text: 'ชื่อโครงการ' }),
+        el('div', { className: 'value', text: p.name })
+      ]),
+      el('div', { className: 'summary-item' }, [
+        el('div', { className: 'label', text: 'จำนวนสถานที่' }),
+        el('div', { className: 'value', text: siteCount + ' แห่ง' })
+      ]),
+      el('div', { className: 'summary-item' }, [
+        el('div', { className: 'label', text: 'วันที่ลงนามในสัญญา' }),
+        el('div', { className: 'value' }, [elDateBE(state.project.contract && state.project.contract.signedAt)])
+      ])
     ]));
     head.appendChild(el('div', { className: 'meta', html:
       'ส่งครั้งแรก: <strong>' + escapeHtml(fmtDate(p.firstSubmittedAt)) + '</strong> · ' +
@@ -878,28 +966,105 @@
     return panel;
   }
 
+  function userAuditActionLabel(action) {
+    var map = {
+      CREATE_USER: 'สร้างรหัสเข้าใช้งาน',
+      UPDATE_USER: 'แก้ไขข้อมูล',
+      DEACTIVATE_USER: 'ปิดใช้งาน',
+      UPDATE_EMAIL_PREFS: 'ตั้งค่าอีเมล',
+      LOGIN: 'เข้าสู่ระบบ'
+    };
+    return map[action] || action;
+  }
+
+  function parseAuditDetails(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try { return JSON.parse(raw); } catch (e) { return { note: String(raw) }; }
+  }
+
+  function formatUserAuditSummary(row) {
+    var d = parseAuditDetails(row.log.details);
+    if (!d) return '—';
+    if (row.log.action === 'UPDATE_USER' && d.before) {
+      return 'รหัส ' + d.before.employeeId + ' → ' + d.employeeId + ' · ชื่อ ' +
+        d.before.firstName + ' ' + d.before.lastName + ' → ' + d.firstName + ' ' + d.lastName;
+    }
+    if (d.employeeId) {
+      return 'รหัส ' + d.employeeId + ' · ' + trimJoin([d.firstName, d.lastName]);
+    }
+    return String(row.log.details || '').slice(0, 100);
+  }
+
+  function trimJoin(parts) {
+    return (parts || []).filter(function (p) { return p; }).join(' ');
+  }
+
+  function splitUserNameFields(user) {
+    if (!user) return { first: '', last: '' };
+    if (user.firstName || user.lastName) {
+      return { first: user.firstName || '', last: user.lastName || '' };
+    }
+    var parts = String(user.name || '').trim().split(/\s+/);
+    return { first: parts[0] || '', last: parts.length > 1 ? parts.slice(1).join(' ') : '' };
+  }
+
+  function renderUserAuditTrail(container, logs) {
+    container.innerHTML = '';
+    if (!logs || !logs.length) {
+      container.appendChild(el('p', { className: 'hint', text: 'ยังไม่มีประวัติการแก้ไข' }));
+      return;
+    }
+    var list = el('ul', { className: 'user-audit-list' });
+    logs.forEach(function (row) {
+      list.appendChild(el('li', { className: 'user-audit-item' }, [
+        el('div', { className: 'user-audit-when', text: fmtDate(row.log.createdAt) }),
+        el('div', { className: 'user-audit-what', text: userAuditActionLabel(row.log.action) }),
+        el('div', { className: 'user-audit-who', text: 'โดย ' + ((row.actor && row.actor.name) || row.log.actorId || 'ระบบ') }),
+        el('div', { className: 'user-audit-detail hint', text: formatUserAuditSummary(row) })
+      ]));
+    });
+    container.appendChild(list);
+  }
+
+  async function loadUserAuditInto(container, userId) {
+    try {
+      var data = await api('apiGetUserAuditLogs', getToken(), userId);
+      renderUserAuditTrail(container, data.logs || []);
+    } catch (e) {
+      container.innerHTML = '';
+      container.appendChild(el('p', { className: 'hint', text: 'โหลดประวัติไม่สำเร็จ' }));
+    }
+  }
+
   function renderUsers() {
     if (!state.users) return el('div', { className: 'loading-box', text: 'กำลังโหลด…' });
     var panel = el('div', { className: 'panel' });
     panel.appendChild(el('div', { className: 'panel-h' }, [
-      el('h3', { text: 'ผู้ใช้งาน' }),
-      el('button', { className: 'btn btn-primary btn-sm', type: 'button', onClick: function () { openUserModal(); } }, ['+ ผู้ใช้'])
+      el('div', null, [
+        el('h3', { text: 'รหัสเข้าใช้งาน' }),
+        el('p', { className: 'hint', text: 'กธพ. สร้างรหัสจาก ชื่อ · นามสกุล · รหัสประจำตัว (ใช้ล็อกอิน) — ระบบบันทึกวันเวลาแก้ไขอัตโนมัติ' })
+      ]),
+      el('button', { className: 'btn btn-primary btn-sm', type: 'button', onClick: function () { openUserModal(); } }, ['+ สร้างรหัส'])
     ]));
     var tw = el('div', { className: 'table-wrap' });
     var table = el('table', { className: 'data' });
-    table.appendChild(el('thead', null, [el('tr', null, ['รหัส', 'ชื่อ', 'บทบาท', 'อีเมล', 'สถานะ', ''].map(function (h) { return el('th', { text: h }); }))]));
+    table.appendChild(el('thead', null, [el('tr', null, [
+      'รหัสประจำตัว', 'ชื่อ', 'นามสกุล', 'กอง', 'สร้างเมื่อ', 'แก้ไขล่าสุด', 'สถานะ', ''
+    ].map(function (h) { return el('th', { text: h }); }))]));
     var tb = el('tbody');
     (state.users.users || []).forEach(function (u) {
+      var names = splitUserNameFields(u);
       var actions = el('td');
       actions.appendChild(el('button', {
         className: 'btn btn-ghost btn-sm', type: 'button',
         onClick: function () { openUserModal(u); }
-      }, ['แก้ไข']));
+      }, ['แก้ไข / ประวัติ']));
       if (u.active) {
         actions.appendChild(el('button', {
           className: 'btn btn-danger btn-sm', type: 'button',
           onClick: async function () {
-            if (!confirm('ปิดใช้งานผู้ใช้ ' + u.name + '?')) return;
+            if (!confirm('ปิดใช้งาน ' + (u.name || u.employeeId) + '?')) return;
             try {
               await api('apiDeactivateUser', getToken(), u.id);
               toast('ปิดใช้งานแล้ว', 'ok');
@@ -910,9 +1075,11 @@
       }
       tb.appendChild(el('tr', null, [
         el('td', { text: u.employeeId }),
-        el('td', { text: u.name }),
+        el('td', { text: names.first || '—' }),
+        el('td', { text: names.last || '—' }),
         el('td', { text: u.role === 'KHT' ? 'กขท.' : 'กธพ.' }),
-        el('td', { text: u.email || '—' }),
+        el('td', { text: u.createdAt ? fmtDate(u.createdAt) : '—' }),
+        el('td', { text: u.updatedAt ? fmtDate(u.updatedAt) : '—' }),
         el('td', { text: u.active ? 'ใช้งาน' : 'ปิด' }),
         actions
       ]));
@@ -1105,6 +1272,15 @@
         el('input', { id: 'm_title', value: existing ? existing.title : '' })
       ]));
       body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'วันที่ลงนามในสัญญา' }),
+        el('input', {
+          type: 'date',
+          id: 'm_signedAt',
+          value: existing ? toDateInputValue(existing.signedAt) : ''
+        }),
+        el('span', { className: 'hint', text: 'แสดงผลเป็น วัน เดือน ปี พ.ศ. ในรายการโครงการ' })
+      ]));
+      body.appendChild(el('div', { className: 'field' }, [
         el('label', { text: 'รายละเอียด' }),
         el('textarea', { id: 'm_desc', text: existing ? (existing.description || '') : '' })
       ]));
@@ -1115,7 +1291,8 @@
             id: existing && existing.id,
             contractNo: $('#m_contractNo').value,
             title: $('#m_title').value,
-            description: $('#m_desc').value
+            description: $('#m_desc').value,
+            signedAt: $('#m_signedAt').value
           });
         });
         toast('บันทึกสัญญาแล้ว', 'ok');
@@ -1131,33 +1308,56 @@
       (state.route === 'contract' && state.routeParams.id) ||
       (state.project && state.project.project && state.project.project.contractId) ||
       '';
-    openModal(existing ? 'แก้ไขโครงการ' : 'สร้างโครงการ', function (body) {
+    openModal(existing ? 'แก้ไขโครงการ' : 'เพิ่มโครงการ', function (body) {
       var sel = el('select', { id: 'm_contractId' });
       contracts.forEach(function (c) {
         var o = el('option', { value: c.id, text: c.contractNo + ' — ' + c.title });
         if (defaultContractId && String(c.id) === String(defaultContractId)) o.selected = true;
         sel.appendChild(o);
       });
-      body.appendChild(el('div', { className: 'field' }, [el('label', { text: 'สัญญา *' }), sel]));
-      body.appendChild(el('div', { className: 'field-row' }, [
-        el('div', { className: 'field' }, [
-          el('label', { text: 'รหัสโครงการ *' }),
-          el('input', { id: 'm_code', value: existing ? existing.projectCode : '' })
-        ]),
-        el('div', { className: 'field' }, [
-          el('label', { text: 'ชื่อโครงการ *' }),
-          el('input', { id: 'm_name', value: existing ? existing.name : '' })
-        ])
+      var signedPreview = el('p', { className: 'hint', id: 'm_signedPreview' });
+      function refreshSignedPreview() {
+        var c = contracts.filter(function (x) { return String(x.id) === String(sel.value); })[0];
+        if (!c || !c.signedAt) {
+          signedPreview.textContent = 'วันที่ลงนามในสัญญา: ยังไม่ระบุ (ตั้งค่าได้เมื่อสร้าง/แก้ไขสัญญา)';
+          return;
+        }
+        signedPreview.innerHTML = '';
+        signedPreview.appendChild(document.createTextNode('วันที่ลงนามในสัญญา: '));
+        signedPreview.appendChild(elDateBE(c.signedAt));
+      }
+      sel.addEventListener('change', refreshSignedPreview);
+
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'เลขที่สัญญา *' }),
+        sel
+      ]));
+      body.appendChild(signedPreview);
+      refreshSignedPreview();
+
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'ชื่อโครงการ *' }),
+        el('input', { id: 'm_name', value: existing ? existing.name : '' })
       ]));
       body.appendChild(el('div', { className: 'field' }, [
-        el('label', { text: 'รายละเอียด' }),
+        el('label', { text: 'รหัสโครงการ (ภายในระบบ) *' }),
+        el('input', { id: 'm_code', value: existing ? existing.projectCode : '' })
+      ]));
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'รายละเอียดเพิ่มเติม' }),
         el('textarea', { id: 'm_pdesc', text: existing ? (existing.description || '') : '' })
       ]));
       if (!existing) {
         body.appendChild(el('div', { className: 'field' }, [
-          el('label', { text: 'พื้นที่เริ่มต้น (หนึ่งบรรทัด: รหัส|ชื่อ|ที่ตั้ง)' }),
-          el('textarea', { id: 'm_sites', placeholder: 'S1|พื้นที่ A|กรุงเทพฯ\nS2|พื้นที่ B|เชียงใหม่' })
+          el('label', { text: 'จำนวนสถานที่ — กรอกรายการพื้นที่ (หนึ่งบรรทัดต่อหนึ่งสถานที่)' }),
+          el('textarea', {
+            id: 'm_sites',
+            placeholder: 'WTR-01|การประปาสาขาบางเขน|กรุงเทพฯ\nWTR-02|การประปาสาขาพระนคร|กรุงเทพฯ'
+          }),
+          el('span', { className: 'hint', text: 'จำนวนสถานที่ = จำนวนบรรทัดที่กรอก' })
         ]));
+      } else if (state.project && state.project.sites) {
+        body.appendChild(el('p', { className: 'hint', text: 'จำนวนสถานที่ปัจจุบัน: ' + state.project.sites.length + ' แห่ง' }));
       }
     }, async function () {
       try {
@@ -1293,36 +1493,70 @@
   }
 
   function openUserModal(existing) {
-    openModal(existing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้', function (body) {
+    var nameParts = splitUserNameFields(existing);
+    openModal(existing ? 'แก้ไขรหัสเข้าใช้งาน' : 'สร้างรหัสเข้าใช้งาน', function (body) {
+      body.appendChild(el('p', { className: 'hint', text: 'รหัสประจำตัวใช้สำหรับล็อกอิน — ทุกครั้งที่บันทึก ระบบเก็บวันเวลาและผู้แก้ไขใน Audit' }));
       body.appendChild(el('div', { className: 'field-row' }, [
-        el('div', { className: 'field' }, [el('label', { text: 'รหัสพนักงาน *' }), el('input', { id: 'm_emp', value: existing ? existing.employeeId : '' })]),
-        el('div', { className: 'field' }, [el('label', { text: 'ชื่อ *' }), el('input', { id: 'm_uname', value: existing ? existing.name : '' })])
+        el('div', { className: 'field' }, [
+          el('label', { text: 'ชื่อ *' }),
+          el('input', { id: 'm_firstName', value: nameParts.first, autocomplete: 'given-name' })
+        ]),
+        el('div', { className: 'field' }, [
+          el('label', { text: 'นามสกุล *' }),
+          el('input', { id: 'm_lastName', value: nameParts.last, autocomplete: 'family-name' })
+        ])
+      ]));
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'รหัสประจำตัว (ใช้ล็อกอิน) *' }),
+        el('input', {
+          id: 'm_emp',
+          value: existing ? existing.employeeId : '',
+          autocomplete: 'off',
+          placeholder: 'เช่น 1234567 หรือ KHT004'
+        })
       ]));
       var sel = el('select', { id: 'm_role' });
       [['KHT', 'กขท.'], ['GTHP', 'กธพ.']].forEach(function (r) {
         var o = el('option', { value: r[0], text: r[1] });
         if (existing && existing.role === r[0]) o.selected = true;
+        if (!existing && r[0] === 'KHT') o.selected = true;
         sel.appendChild(o);
       });
-      body.appendChild(el('div', { className: 'field' }, [el('label', { text: 'บทบาท' }), sel]));
-      body.appendChild(el('div', { className: 'field' }, [el('label', { text: 'อีเมล' }), el('input', { id: 'm_email', value: existing ? (existing.email || '') : '' })]));
+      body.appendChild(el('div', { className: 'field' }, [el('label', { text: 'กอง *' }), sel]));
+      body.appendChild(el('div', { className: 'field' }, [
+        el('label', { text: 'อีเมล (ไม่บังคับ)' }),
+        el('input', { id: 'm_email', type: 'email', value: existing ? (existing.email || '') : '' })
+      ]));
+      if (existing) {
+        body.appendChild(el('div', { className: 'user-audit-section' }, [
+          el('h4', { text: 'ประวัติการแก้ไข' }),
+          el('div', { id: 'm_userAudit', className: 'user-audit-trail' }, [
+            el('p', { className: 'hint', text: 'กำลังโหลดประวัติ…' })
+          ])
+        ]));
+      }
     }, async function () {
       try {
         await withLoad(function () {
           return api('apiSaveUser', getToken(), {
             id: existing && existing.id,
-            employeeId: $('#m_emp').value,
-            name: $('#m_uname').value,
+            employeeId: $('#m_emp').value.trim(),
+            firstName: $('#m_firstName').value.trim(),
+            lastName: $('#m_lastName').value.trim(),
             role: $('#m_role').value,
-            email: $('#m_email').value,
+            email: $('#m_email').value.trim(),
             active: existing ? existing.active !== false : true
           });
         });
-        toast('บันทึกผู้ใช้แล้ว', 'ok');
+        toast('บันทึกรหัสเข้าใช้งานแล้ว', 'ok');
         closeModal();
         loadRouteData();
       } catch (e) { toast(e.message, 'err'); }
     });
+    if (existing) {
+      var auditEl = $('#m_userAudit');
+      if (auditEl) loadUserAuditInto(auditEl, existing.id);
+    }
   }
 
   async function submitProject() {

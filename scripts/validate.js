@@ -93,7 +93,7 @@ console.log('4) Mock API seed + workflow (vm + localStorage polyfill)');
   return Promise.resolve()
     .then(function () { return API.apiGetBootstrap(''); })
     .then(function (boot) {
-      assert(boot.demoAccounts && boot.demoAccounts.length >= 5, 'bootstrap demo accounts');
+      assert(boot.demoAccounts && boot.demoAccounts.length === 2, 'bootstrap demo accounts (KHT + GTHP)');
       assert(String(boot.authWarning || '').length > 10, 'auth warning present');
       var db = API._loadDb();
       assert(db.Users.length >= 6, 'users seeded (>=6 incl inactive)');
@@ -158,24 +158,36 @@ console.log('4) Mock API seed + workflow (vm + localStorage polyfill)');
               return API.apiLogin('GTHP001');
             }).then(function (gLogin) {
               var gTok = gLogin.session.token;
-              return API.apiRequestRevision(gTok, {
-                projectId: prj.project.id,
-                message: 'ปรับ SLD ให้ชัดขึ้น'
-              }).then(function (rev) {
-                assert(rev.project.status === 'NeedsRevision', 'revision → NeedsRevision');
-                return API.apiSubmitProject(tok, prj.project.id);
-              }).then(function () {
-                return API.apiAcceptProject(gTok, {
+              var newEmpId = 'VU' + String(Date.now()).slice(-7);
+              return API.apiSaveUser(gTok, {
+                firstName: 'Validate',
+                lastName: 'Account',
+                employeeId: newEmpId,
+                role: 'KHT'
+              }).then(function (uRes) {
+                assert(uRes.user.firstName === 'Validate', 'gthp create user with first/last name');
+                return API.apiGetUserAuditLogs(gTok, uRes.user.id);
+              }).then(function (aRes) {
+                assert(aRes.logs && aRes.logs.some(function (r) { return r.log.action === 'CREATE_USER'; }), 'user create audit trail');
+                return API.apiRequestRevision(gTok, {
                   projectId: prj.project.id,
-                  message: 'ยอมรับครบถ้วน'
+                  message: 'ปรับ SLD ให้ชัดขึ้น'
+                }).then(function (rev) {
+                  assert(rev.project.status === 'NeedsRevision', 'revision → NeedsRevision');
+                  return API.apiSubmitProject(tok, prj.project.id);
+                }).then(function () {
+                  return API.apiAcceptProject(gTok, {
+                    projectId: prj.project.id,
+                    message: 'ยอมรับครบถ้วน'
+                  });
+                }).then(function (acc) {
+                  assert(acc.project.status === 'Completed', 'accept → Completed');
+                  return API.apiResetAndSeed(gTok);
+                }).then(function () {
+                  var db2 = API._loadDb();
+                  assert(db2.Projects.some(function (p) { return p.id === 'prj_water_001'; }), 'reset restores seed');
+                  pass('full KHT→GTHP workflow + reset');
                 });
-              }).then(function (acc) {
-                assert(acc.project.status === 'Completed', 'accept → Completed');
-                return API.apiResetAndSeed(gTok);
-              }).then(function () {
-                var db2 = API._loadDb();
-                assert(db2.Projects.some(function (p) { return p.id === 'prj_water_001'; }), 'reset restores seed');
-                pass('full KHT→GTHP workflow + reset');
               });
             });
           });

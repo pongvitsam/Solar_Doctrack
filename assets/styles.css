@@ -107,20 +107,76 @@ a { color: var(--pea-purple-mid); }
   margin-bottom: 16px;
   line-height: 1.45;
 }
-.demo-accounts {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 10px 0 18px;
+.demo-login-panel {
+  margin: 0 0 18px;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #faf6ff 0%, #fffdf5 100%);
+  border: 1px solid rgba(201, 162, 39, 0.35);
 }
-.demo-chip {
-  border: 1px dashed var(--line);
-  background: #faf7ff;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
+.demo-login-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--pea-purple-deep);
+  margin-bottom: 10px;
+  text-align: center;
+}
+.demo-login-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.demo-login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+.demo-login-card:hover {
+  border-color: var(--pea-gold);
+  box-shadow: 0 4px 14px rgba(74, 28, 107, 0.08);
+  transform: translateY(-1px);
+}
+.demo-login-card--kht { border-top: 3px solid var(--pea-purple); }
+.demo-login-card--gthp { border-top: 3px solid var(--pea-gold); }
+.demo-login-role {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--pea-purple-deep);
+  letter-spacing: 0.02em;
+}
+.demo-login-id {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.88rem;
+  font-weight: 700;
   color: var(--pea-purple);
 }
-.demo-chip:hover { border-color: var(--pea-gold); background: #fff9e8; }
+.demo-login-name {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.demo-login-action {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--pea-gold-dark, #9a7b1a);
+}
+.demo-login-hint {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+}
+@media (max-width: 420px) {
+  .demo-login-grid { grid-template-columns: 1fr; }
+}
 
 /* Shell */
 .app-shell { display: flex; min-height: 100vh; }
@@ -438,6 +494,109 @@ table.data tr.clickable { cursor: pointer; }
   padding: 2px 8px; border-radius: 999px;
   background: rgba(201,162,39,0.2); color: var(--pea-gold-soft);
   font-size: 0.72rem; font-weight: 600;
+}
+
+.date-be-wrap {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #faf6ff 0%, #fff9ec 100%);
+  border: 1px solid rgba(201, 162, 39, 0.38);
+  box-shadow: 0 2px 8px rgba(74, 28, 107, 0.06);
+}
+.date-be {
+  font-variant-numeric: tabular-nums;
+  color: var(--pea-purple-deep);
+  font-weight: 600;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+.contract-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.project-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 10px;
+}
+.summary-item {
+  background: linear-gradient(160deg, #fff, #faf6ff);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.summary-item .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.summary-item .value {
+  font-size: 0.95rem;
+  color: var(--pea-purple-deep);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.project-summary-table .num-cell {
+  font-weight: 600;
+  color: var(--pea-purple-deep);
+  white-space: nowrap;
+}
+
+.user-audit-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.user-audit-section h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--pea-purple-deep);
+}
+.user-audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.user-audit-item {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.user-audit-item:last-child { border-bottom: none; }
+.user-audit-when {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--pea-purple-deep);
+}
+.user-audit-what {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.user-audit-who {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.user-audit-detail {
+  font-size: 0.75rem;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+@media (max-width: 860px) {
+  .project-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .project-summary-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1100px) {

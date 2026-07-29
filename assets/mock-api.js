@@ -21,10 +21,7 @@
 
   var DEMO_ACCOUNTS = [
     { employeeId: 'KHT001', role: 'KHT', name: 'สมชาย กขท.' },
-    { employeeId: 'KHT002', role: 'KHT', name: 'วิภา กขท.' },
-    { employeeId: 'KHT003', role: 'KHT', name: 'ธนกร กขท.' },
-    { employeeId: 'GTHP001', role: 'GTHP', name: 'อรุณี กธพ.' },
-    { employeeId: 'GTHP002', role: 'GTHP', name: 'ประเสริฐ กธพ.' }
+    { employeeId: 'GTHP001', role: 'GTHP', name: 'อรุณี กธพ.' }
   ];
 
   var AUTH_WARNING = 'เข้าสู่ระบบด้วยรหัสพนักงานเท่านั้น — เหมาะกับ mockup/เครือข่ายภายใน ไม่ใช่ authentication ระดับ production';
@@ -43,7 +40,15 @@
   function ok(data) { return { ok: true, data: data == null ? null : data }; }
   function fail(message) { return { ok: false, error: message || 'เกิดข้อผิดพลาด', code: 'ERROR' }; }
 
-  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  function normalizeSignedAt(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return '';
+    var s = String(value).trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    var d = new Date(s);
+    if (isNaN(d.getTime())) throw new Error('รูปแบบวันที่ลงนามไม่ถูกต้อง');
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
 
   function requireFields(obj, fields) {
     for (var i = 0; i < fields.length; i++) {
@@ -156,16 +161,45 @@
       .forEach(function (u) { writeNotification(db, u.id, type, title, message, linkRef); });
   }
 
+  function buildUserFullName(firstName, lastName) {
+    return [String(firstName || '').trim(), String(lastName || '').trim()]
+      .filter(function (p) { return p; })
+      .join(' ');
+  }
+
+  function ensureUserNameParts(u) {
+    if (!u) return null;
+    var out = Object.assign({}, u);
+    if (out.firstName || out.lastName) {
+      if (!out.name) out.name = buildUserFullName(out.firstName, out.lastName);
+      return out;
+    }
+    if (out.name) {
+      var parts = String(out.name).trim().split(/\s+/);
+      out.firstName = parts[0] || '';
+      out.lastName = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    } else {
+      out.firstName = '';
+      out.lastName = '';
+    }
+    return out;
+  }
+
   function sanitizeUser(u) {
     if (!u) return null;
+    var n = ensureUserNameParts(u);
     return {
-      id: u.id,
-      employeeId: u.employeeId,
-      name: u.name,
-      role: u.role,
-      email: u.email,
-      emailPreferences: u.emailPreferences || {},
-      active: u.active !== false
+      id: n.id,
+      employeeId: n.employeeId,
+      firstName: n.firstName || '',
+      lastName: n.lastName || '',
+      name: n.name || buildUserFullName(n.firstName, n.lastName),
+      role: n.role,
+      email: n.email,
+      emailPreferences: n.emailPreferences || {},
+      active: n.active !== false,
+      createdAt: n.createdAt || '',
+      updatedAt: n.updatedAt || ''
     };
   }
 
@@ -395,18 +429,21 @@
       id: 'ctr_001', contractNo: 'PEA-SOLAR-2026-001',
       title: 'สัญญาติดตั้งระบบผลิตไฟฟ้าพลังงานแสงอาทิตย์บนหลังคา',
       description: 'สัญญาแม่สำหรับโครงการโซลาร์รูฟท็อปหลายพื้นที่ รวมโครงการการประปา',
+      signedAt: '2026-01-15',
       createdBy: 'usr_kht_001', createdAt: t, updatedAt: t
     });
     append(db, 'Contracts', {
       id: 'ctr_002', contractNo: 'PEA-SOLAR-2026-002',
       title: 'สัญญาโซลาร์คลังสินค้าและศูนย์กระจายพัสดุ',
       description: 'ข้อมูลตัวอย่างสำหรับคิวตรวจเอกสาร',
+      signedAt: '2026-02-01',
       createdBy: 'usr_kht_002', createdAt: ago(70), updatedAt: ago(3)
     });
     append(db, 'Contracts', {
       id: 'ctr_003', contractNo: 'PEA-SOLAR-2025-014',
       title: 'สัญญาโซลาร์โรงพยาบาลชุมชน',
       description: 'โครงการตัวอย่างที่ กธพ. ยอมรับแล้ว',
+      signedAt: '2025-08-12',
       createdBy: 'usr_kht_003', createdAt: ago(180), updatedAt: ago(15)
     });
 
@@ -739,6 +776,7 @@
         contractNo: String(payload.contractNo).trim(),
         title: String(payload.title).trim(),
         description: payload.description || '',
+        signedAt: normalizeSignedAt(payload.signedAt),
         updatedAt: t
       });
       writeAudit(db, session.userId, 'UPDATE_CONTRACT', 'Contract', payload.id, payload);
@@ -753,6 +791,7 @@
       contractNo: String(payload.contractNo).trim(),
       title: String(payload.title).trim(),
       description: payload.description || '',
+      signedAt: normalizeSignedAt(payload.signedAt),
       createdBy: session.userId,
       createdAt: t,
       updatedAt: t
@@ -1098,28 +1137,58 @@
   function apiSaveUser(token, payload) {
     var session = requireSession(token);
     requireRole(session, [ROLES.GTHP]);
-    requireFields(payload || {}, ['employeeId', 'name', 'role']);
-    if ([ROLES.KHT, ROLES.GTHP].indexOf(payload.role) === -1) throw new Error('บทบาทต้องเป็น KHT หรือ GTHP');
+    requireFields(payload || {}, ['employeeId', 'firstName', 'lastName', 'role']);
+    if ([ROLES.KHT, ROLES.GTHP].indexOf(payload.role) === -1) throw new Error('กองต้องเป็น กขท. หรือ กธพ.');
+    var firstName = String(payload.firstName).trim();
+    var lastName = String(payload.lastName).trim();
+    var fullName = buildUserFullName(firstName, lastName);
+    if (!fullName) throw new Error('กรุณาระบุชื่อหรือนามสกุล');
+    var employeeId = String(payload.employeeId).trim();
+    if (!employeeId) throw new Error('กรุณาระบุรหัสประจำตัว');
     var db = loadDb();
     var t = nowIso();
     if (payload.id) {
+      var before = getUserById(db, payload.id);
+      if (!before) throw new Error('ไม่พบผู้ใช้');
+      if (findOneWhere(db, 'Users', function (u) {
+        return String(u.employeeId) === employeeId && String(u.id) !== String(payload.id);
+      })) throw new Error('รหัสประจำตัวนี้มีในระบบแล้ว');
+      var beforeParts = ensureUserNameParts(before);
       var updated = updateById(db, 'Users', payload.id, {
-        employeeId: String(payload.employeeId).trim(),
-        name: String(payload.name).trim(),
+        employeeId: employeeId,
+        firstName: firstName,
+        lastName: lastName,
+        name: fullName,
         role: payload.role,
         email: payload.email || '',
         active: payload.active !== false,
         updatedAt: t
       });
-      writeAudit(db, session.userId, 'UPDATE_USER', 'User', payload.id, payload);
+      writeAudit(db, session.userId, 'UPDATE_USER', 'User', payload.id, {
+        at: t,
+        employeeId: employeeId,
+        firstName: firstName,
+        lastName: lastName,
+        role: payload.role,
+        before: {
+          employeeId: before.employeeId,
+          firstName: beforeParts.firstName,
+          lastName: beforeParts.lastName,
+          role: before.role
+        }
+      });
       saveDb(db);
       return ok({ user: sanitizeUser(updated) });
     }
-    if (getUserByEmployeeId(db, payload.employeeId)) throw new Error('รหัสพนักงานซ้ำ');
+    if (findOneWhere(db, 'Users', function (u) { return String(u.employeeId) === employeeId; })) {
+      throw new Error('รหัสประจำตัวนี้มีในระบบแล้ว');
+    }
     var created = append(db, 'Users', {
       id: uid('usr'),
-      employeeId: String(payload.employeeId).trim(),
-      name: String(payload.name).trim(),
+      employeeId: employeeId,
+      firstName: firstName,
+      lastName: lastName,
+      name: fullName,
       role: payload.role,
       email: payload.email || '',
       emailPreferences: payload.emailPreferences || { submit: true, revision: true, accept: true, comment: true },
@@ -1127,7 +1196,13 @@
       createdAt: t,
       updatedAt: t
     });
-    writeAudit(db, session.userId, 'CREATE_USER', 'User', created.id, created);
+    writeAudit(db, session.userId, 'CREATE_USER', 'User', created.id, {
+      at: t,
+      employeeId: employeeId,
+      firstName: firstName,
+      lastName: lastName,
+      role: payload.role
+    });
     saveDb(db);
     return ok({ user: sanitizeUser(created) });
   }
@@ -1226,6 +1301,25 @@
     return ok({ logs: enriched });
   }
 
+  function apiGetUserAuditLogs(token, userId) {
+    var session = requireSession(token);
+    requireRole(session, [ROLES.GTHP]);
+    requireFields({ userId: userId }, ['userId']);
+    var db = loadDb();
+    if (!getUserById(db, userId)) throw new Error('ไม่พบผู้ใช้');
+    var logs = findWhere(db, 'AuditLogs', function (l) {
+      return l.entityType === 'User' && String(l.entityId) === String(userId);
+    }).sort(function (a, b) {
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    });
+    var users = list(db, 'Users');
+    var enriched = logs.map(function (l) {
+      var actor = users.filter(function (u) { return u.id === l.actorId; })[0];
+      return { log: l, actor: actor ? sanitizeUser(actor) : { name: l.actorId || 'system' } };
+    });
+    return ok({ logs: enriched });
+  }
+
   function apiGetSettings(token) {
     requireSession(token);
     var db = loadDb();
@@ -1299,6 +1393,7 @@
     apiMarkAllNotificationsRead: wrap(apiMarkAllNotificationsRead),
     apiUpdateEmailPreferences: wrap(apiUpdateEmailPreferences),
     apiGetAuditLogs: wrap(apiGetAuditLogs),
+    apiGetUserAuditLogs: wrap(apiGetUserAuditLogs),
     apiGetSettings: wrap(apiGetSettings),
     apiRunSetup: wrap(apiRunSetup),
     apiResetAndSeed: wrap(apiResetAndSeed),
