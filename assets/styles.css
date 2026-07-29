@@ -164,6 +164,20 @@ a { color: var(--pea-purple-mid); }
   background: linear-gradient(90deg, rgba(201,162,39,0.28), rgba(255,255,255,0.06));
   box-shadow: inset 3px 0 0 var(--pea-gold);
 }
+.nav-badge {
+  flex-shrink: 0;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pea-gold), #f0d978);
+  color: var(--pea-purple-deep);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
 .sidebar-footer {
   margin-top: auto;
   padding: 12px 10px;

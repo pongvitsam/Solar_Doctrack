@@ -22,7 +22,8 @@
     loading: false,
     sidebarOpen: false,
     filters: { q: '', status: '', sort: 'updated' },
-    modal: null
+    modal: null,
+    unreadNotifications: 0
   };
 
   var STATUS_LABEL = {
@@ -114,6 +115,35 @@
   function isGTHP() { return state.session && state.session.role === 'GTHP'; }
   function isKHT() { return state.session && state.session.role === 'KHT'; }
 
+  function setUnreadNotifications(count) {
+    state.unreadNotifications = Math.max(0, Number(count) || 0);
+  }
+
+  async function refreshUnreadCount() {
+    if (!state.session) {
+      setUnreadNotifications(0);
+      return;
+    }
+    try {
+      var data = await api('apiGetNotifications', getToken());
+      var list = data.notifications || [];
+      setUnreadNotifications(list.filter(function (n) { return !n.read; }).length);
+    } catch (e) { /* keep previous count */ }
+  }
+
+  function navBtnChildren(item) {
+    var wrap = el('span', { style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px' }, [
+      el('span', { text: item.label })
+    ]);
+    if (item.id === 'notifications' && state.unreadNotifications > 0) {
+      wrap.appendChild(el('span', {
+        className: 'nav-badge',
+        text: state.unreadNotifications > 99 ? '99+' : String(state.unreadNotifications)
+      }));
+    }
+    return [wrap];
+  }
+
   // ---- Boot ----
   async function boot() {
     try {
@@ -121,6 +151,7 @@
       state.boot = data;
       state.session = data.session;
       if (state.session && state.session.token) setToken(state.session.token);
+      if (state.session) await refreshUnreadCount();
       render();
       if (state.session) loadRouteData();
     } catch (e) {
@@ -160,6 +191,10 @@
         } else if (state.route === 'contracts' || state.route === 'contract') {
           state.dashboard = await api('apiGetDashboard', getToken());
         }
+        if (state.dashboard && state.dashboard.kpi && state.dashboard.kpi.unreadNotifications != null) {
+          setUnreadNotifications(state.dashboard.kpi.unreadNotifications);
+        }
+        await refreshUnreadCount();
       });
       render();
     } catch (e) {
@@ -286,7 +321,7 @@
         className: 'nav-btn' + ((state.route === n.id || (n.id === 'contracts' && state.route === 'contract')) ? ' active' : ''),
         type: 'button',
         onClick: function () { navigate(n.id); }
-      }, [n.label]));
+      }, navBtnChildren(n)));
     });
     side.appendChild(el('div', { className: 'sidebar-footer' }, [
       el('div', { text: state.session.name }),
@@ -324,7 +359,9 @@
         className: 'menu-toggle', type: 'button',
         onClick: function () { state.sidebarOpen = !state.sidebarOpen; render(); }
       }, ['เมนู']),
-      el('h2', { text: titles[state.route] || 'PEA Solar DocTrack' })
+      el('h2', { text: (state.route === 'notifications' && state.unreadNotifications > 0)
+        ? ('การแจ้งเตือน (' + state.unreadNotifications + ')')
+        : (titles[state.route] || 'PEA Solar DocTrack') })
     ]));
     var actions = el('div', { className: 'topbar-actions' });
     if (state.route === 'dashboard') {
@@ -794,7 +831,9 @@
     if (!state.notifications) return el('div', { className: 'loading-box', text: 'กำลังโหลด…' });
     var panel = el('div', { className: 'panel' });
     panel.appendChild(el('div', { className: 'panel-h' }, [
-      el('h3', { text: 'การแจ้งเตือน' }),
+      el('h3', { text: state.unreadNotifications > 0
+        ? ('การแจ้งเตือน · ยังไม่อ่าน ' + state.unreadNotifications)
+        : 'การแจ้งเตือน' }),
       el('button', {
         className: 'btn btn-ghost btn-sm', type: 'button',
         onClick: async function () {
