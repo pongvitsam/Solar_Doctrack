@@ -972,8 +972,19 @@
 
   function renderEmailPrefs() {
     var panel = el('div', { className: 'panel' });
-    panel.appendChild(el('div', { className: 'panel-h' }, [el('h3', { text: 'การแจ้งเตือนทางอีเมล (mock preference)' })]));
-    panel.appendChild(el('p', { className: 'hint', text: 'ค่านี้เก็บใน Users.emailPreferences — ระบบ mock ไม่ส่งอีเมลจริง' }));
+    panel.appendChild(el('div', { className: 'panel-h' }, [el('h3', { text: 'การแจ้งเตือนทางอีเมล' })]));
+    panel.appendChild(el('p', { className: 'hint', text: 'ระบุอีเมลของคุณและเลือกเหตุการณ์ที่ต้องการรับแจ้ง (mock — ยังไม่ส่งอีเมลจริง)' }));
+
+    panel.appendChild(el('div', { className: 'field' }, [
+      el('label', { text: 'อีเมลสำหรับแจ้งเตือน *' }),
+      el('input', {
+        type: 'email',
+        id: 'notify_email',
+        placeholder: 'เช่น your.name@pea.co.th',
+        value: (state.session && state.session.email) || ''
+      }),
+      el('span', { className: 'hint', text: 'แก้ไขได้ตามต้องการ — บันทึกแล้วผูกกับบัญชีรหัสพนักงานของคุณ' })
+    ]));
 
     var keys = [
       ['submit', 'เมื่อมีการส่งตรวจ'],
@@ -996,12 +1007,20 @@
     panel.appendChild(el('button', {
       className: 'btn btn-primary', type: 'button', style: 'margin-top:12px',
       onClick: async function () {
-        var prefs = {};
-        keys.forEach(function (k) { prefs[k[0]] = !!$('#pref_' + k[0]).checked; });
+        var email = ($('#notify_email') && $('#notify_email').value || '').trim();
+        if (!email) {
+          toast('กรุณาระบุอีเมลสำหรับแจ้งเตือน', 'err');
+          return;
+        }
+        var payload = { email: email };
+        keys.forEach(function (k) { payload[k[0]] = !!$('#pref_' + k[0]).checked; });
         try {
-          var result = await api('apiUpdateEmailPreferences', getToken(), prefs);
-          state.session.emailPreferences = (result.user && result.user.emailPreferences) || prefs;
-          toast('บันทึกการตั้งค่าแล้ว', 'ok');
+          var result = await api('apiUpdateEmailPreferences', getToken(), payload);
+          if (result.user) {
+            state.session.email = result.user.email || email;
+            state.session.emailPreferences = result.user.emailPreferences || payload;
+          }
+          toast('บันทึกอีเมลและการแจ้งเตือนแล้ว', 'ok');
         } catch (e) { toast(e.message, 'err'); }
       }
     }, ['บันทึก']));

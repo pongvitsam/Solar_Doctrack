@@ -1172,18 +1172,41 @@
     return ok({ done: true });
   }
 
-  function apiUpdateEmailPreferences(token, prefs) {
+  function apiUpdateEmailPreferences(token, payload) {
     var session = requireSession(token);
     var db = loadDb();
     if (!getUserById(db, session.userId)) throw new Error('ไม่พบผู้ใช้');
-    var updated = updateById(db, 'Users', session.userId, {
-      emailPreferences: prefs || {},
+    payload = payload || {};
+    var prefs = {
+      submit: !!payload.submit,
+      revision: !!payload.revision,
+      accept: !!payload.accept,
+      comment: !!payload.comment
+    };
+    var patch = {
+      emailPreferences: prefs,
       updatedAt: nowIso()
+    };
+    if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
+      var email = String(payload.email || '').trim();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error('รูปแบบอีเมลไม่ถูกต้อง');
+      }
+      patch.email = email;
+    }
+    var updated = updateById(db, 'Users', session.userId, patch);
+    writeAudit(db, session.userId, 'UPDATE_EMAIL_PREFS', 'User', session.userId, {
+      email: updated.email || '',
+      preferences: prefs
     });
-    writeAudit(db, session.userId, 'UPDATE_EMAIL_PREFS', 'User', session.userId, prefs);
     saveDb(db);
     var sessions = loadSessions();
-    if (sessions[token]) sessions[token].emailPreferences = prefs || {};
+    if (sessions[token]) {
+      sessions[token].emailPreferences = prefs;
+      if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
+        sessions[token].email = updated.email || '';
+      }
+    }
     saveSessions(sessions);
     return ok({ user: sanitizeUser(updated) });
   }
