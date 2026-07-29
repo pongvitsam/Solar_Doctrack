@@ -591,6 +591,24 @@ table.data tr.clickable { cursor: pointer; }
   margin-top: 4px;
   line-height: 1.4;
 }
+.upload-file-preview,
+.current-file-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 0.82rem;
+}
+.upload-file-preview li,
+.current-file-list li {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.storage-path-hint {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  word-break: break-all;
+}
 
 @media (max-width: 860px) {
   .project-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -614,8 +632,10 @@ table.data tr.clickable { cursor: pointer; }
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .field-row { grid-template-columns: 1fr; }
   .main { padding: 14px 12px 32px; }
+  .project-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 520px) {
   .kpi-grid { grid-template-columns: 1fr; }
   .toolbar .search-input { max-width: none; width: 100%; }
+  .project-summary-grid { grid-template-columns: 1fr; }
 }

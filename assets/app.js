@@ -833,16 +833,45 @@
     return block;
   }
 
+  function formatBytes(n) {
+    var b = Number(n) || 0;
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+    return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
   function renderCheckItem(iv, site) {
     var row = el('div', { className: 'check-item' });
+    var currentFiles = (iv.currentFiles && iv.currentFiles.length)
+      ? iv.currentFiles
+      : (iv.currentFile ? [iv.currentFile] : []);
+    var replacing = currentFiles.length > 0;
     var left = el('div', null, [
       el('div', { className: 'title', text: iv.title + (iv.item.required ? ' *' : '') }),
       el('div', { className: 'cat', text: iv.category }),
       chip(iv.item.status)
     ]);
+    if (currentFiles.length) {
+      var cur = el('ul', { className: 'current-file-list' });
+      currentFiles.forEach(function (f) {
+        cur.appendChild(el('li', null, [
+          document.createTextNode(f.fileName + ' · v' + f.version + ' · ' + formatBytes(f.sizeBytes) + ' '),
+          el('button', {
+            className: 'btn btn-ghost btn-sm', type: 'button',
+            onClick: function () { openFile(f.id); }
+          }, ['เปิด'])
+        ]));
+        if (f.storagePath) {
+          cur.appendChild(el('li', { className: 'hint storage-path-hint', text: 'OneDrive: ' + f.storagePath }));
+        }
+      });
+      left.appendChild(cur);
+    }
     if (iv.versions && iv.versions.length) {
       var ul = el('ul', { className: 'version-list' });
       iv.versions.forEach(function (f) {
+        if (currentFiles.some(function (c) { return c.id === f.id; })) return;
         ul.appendChild(el('li', null, [
           document.createTextNode('v' + f.version + ' · ' + f.fileName + ' · ' + fmtDate(f.uploadedAt) +
             (f.reason ? ' · เหตุผล: ' + f.reason : '') + ' '),
@@ -852,7 +881,7 @@
           }, ['เปิด'])
         ]));
       });
-      left.appendChild(ul);
+      if (ul.childNodes.length) left.appendChild(ul);
     }
     row.appendChild(left);
 
@@ -861,7 +890,7 @@
       right.appendChild(el('button', {
         className: 'btn btn-primary btn-sm', type: 'button',
         onClick: function () { openUploadModal(iv, site); }
-      }, [iv.currentFile ? 'เปลี่ยนไฟล์' : 'อัปโหลด']));
+      }, [replacing ? 'เพิ่ม/เปลี่ยนไฟล์' : 'อัปโหลด']));
     }
     row.appendChild(right);
     return row;
@@ -1172,7 +1201,7 @@
     }, ['รีเซ็ตข้อมูลทั้งหมด']));
     panel.appendChild(modeRow);
     panel.appendChild(el('p', { className: 'hint', text: '“เติม Mock Data” ยืนยัน seed · “รีเซ็ต” ล้าง localStorage แล้วสร้างตัวอย่างใหม่ครบสถานะ' }));
-    panel.appendChild(el('p', { className: 'hint', text: 'โหมด Graph เป็น stub ใน static demo — อัปโหลดยังเป็น metadata ใน localStorage' }));
+    panel.appendChild(el('p', { className: 'hint', text: 'โครงสร้าง OneDrive: PEA-Solar-DocTrack / เลขที่สัญญา / รหัสโครงการ_ชื่อ / รหัสสถานที่_ชื่อ / เอกสาร / v{n} / ไฟล์' }));
     return panel;
   }
 
@@ -1436,39 +1465,70 @@
   }
 
   function openUploadModal(iv, site) {
-    var replacing = !!iv.currentFile;
-    openModal(replacing ? 'เปลี่ยนไฟล์' : 'อัปโหลดไฟล์', function (body) {
+    var currentFiles = (iv.currentFiles && iv.currentFiles.length)
+      ? iv.currentFiles
+      : (iv.currentFile ? [iv.currentFile] : []);
+    var replacing = currentFiles.length > 0;
+    var contract = state.project && state.project.contract;
+    var project = state.project && state.project.project;
+    var pathHint = contract && project
+      ? 'PEA-Solar-DocTrack / ' + contract.contractNo + ' / ' + project.projectCode + '_… / ' + site.siteCode + '_… / … / v{n} / ไฟล์'
+      : '';
+    openModal(replacing ? 'เพิ่ม/เปลี่ยนไฟล์' : 'อัปโหลดไฟล์', function (body) {
       body.appendChild(el('p', { className: 'hint', text: iv.title + ' · ' + site.name }));
+      if (pathHint) {
+        body.appendChild(el('p', { className: 'hint storage-path-hint', text: 'โครงสร้างโฟลเดอร์ OneDrive: ' + pathHint }));
+      }
       body.appendChild(el('div', { className: 'field' }, [
-        el('label', { text: 'เลือกไฟล์ (จำลอง metadata — ไม่ส่งไบนารีจริงผ่าน GAS)' }),
-        el('input', { type: 'file', id: 'm_file' })
+        el('label', { text: 'เลือกไฟล์ (ได้หลายไฟล์พร้อมกัน)' }),
+        el('input', { type: 'file', id: 'm_file', multiple: 'multiple' })
       ]));
+      body.appendChild(el('ul', { id: 'm_filePreview', className: 'upload-file-preview' }));
       body.appendChild(el('div', { className: 'field' }, [
-        el('label', { text: replacing ? 'เหตุผลที่เปลี่ยนไฟล์ *' : 'หมายเหตุ (ถ้ามี)' }),
+        el('label', { text: replacing ? 'เหตุผลที่เปลี่ยน/เพิ่มไฟล์ *' : 'หมายเหตุ (ถ้ามี)' }),
         el('textarea', { id: 'm_reason', required: replacing ? 'required' : null })
       ]));
-      body.appendChild(el('p', { className: 'auth-warn', text: 'Mock OneDrive: เก็บ metadata + ลิงก์จำลอง; อนาคตใช้ Microsoft Graph resumable upload' }));
+      body.appendChild(el('p', { className: 'auth-warn', text:
+        'ไม่จำกัดขนาดไฟล์ในระบบ — ไม่ส่งไบนารีผ่าน GAS/mock; production ใช้ Microsoft Graph แบบ chunk upload ตาม path โครงการด้านบน' }));
     }, async function () {
       var input = $('#m_file');
-      var file = input.files && input.files[0];
-      if (!file) { toast('กรุณาเลือกไฟล์', 'err'); return; }
+      var files = input.files ? Array.prototype.slice.call(input.files) : [];
+      if (!files.length) { toast('กรุณาเลือกไฟล์', 'err'); return; }
       var reason = $('#m_reason').value.trim();
       if (replacing && !reason) { toast('ต้องระบุเหตุผลเมื่อเปลี่ยนไฟล์', 'err'); return; }
       try {
-        await withLoad(function () {
-          return api('apiUploadFile', getToken(), {
+        var res = await withLoad(function () {
+          return api('apiUploadFiles', getToken(), {
             checklistItemId: iv.item.id,
-            fileName: file.name,
-            mimeType: file.type || 'application/octet-stream',
-            sizeBytes: file.size,
-            reason: reason
+            reason: reason,
+            files: files.map(function (file) {
+              return {
+                fileName: file.name,
+                mimeType: file.type || 'application/octet-stream',
+                sizeBytes: file.size
+              };
+            })
           });
         });
-        toast('อัปโหลด (mock) สำเร็จ', 'ok');
+        var n = (res.files && res.files.length) || files.length;
+        toast('อัปโหลด ' + n + ' ไฟล์แล้ว' + (res.storagePathExample ? ' · ' + res.storagePathExample : ''), 'ok');
         closeModal();
         loadRouteData();
       } catch (e) { toast(e.message, 'err'); }
     });
+    setTimeout(function () {
+      var input = $('#m_file');
+      var preview = $('#m_filePreview');
+      if (!input || !preview) return;
+      input.addEventListener('change', function () {
+        preview.innerHTML = '';
+        var list = input.files ? Array.prototype.slice.call(input.files) : [];
+        if (!list.length) return;
+        list.forEach(function (file) {
+          preview.appendChild(el('li', { text: file.name + ' · ' + formatBytes(file.size) }));
+        });
+      });
+    }, 0);
   }
 
   function openRevisionModal() {

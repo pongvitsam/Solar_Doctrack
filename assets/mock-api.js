@@ -740,6 +740,7 @@
           title: item.customTitle || (tpl && tpl.title) || 'เอกสารกำหนดเอง',
           category: (tpl && tpl.category) || 'เอกสารอื่น',
           versions: versions,
+          currentFiles: versions.filter(function (f) { return f.isCurrent; }),
           currentFile: versions.filter(function (f) { return f.isCurrent; })[0] || versions[0] || null,
           progress: null
         };
@@ -934,16 +935,70 @@
     return ok({ item: item });
   }
 
-  function apiUploadFile(token, payload) {
-    var session = requireSession(token);
-    requireRole(session, [ROLES.KHT]);
-    requireFields(payload || {}, ['checklistItemId', 'fileName']);
-    var db = loadDb();
+  function sanitizePathSegment(value, maxLen) {
+    var s = String(value == null ? '' : value)
+      .replace(/[\\/:*?"<>|#%]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!s) s = 'unknown';
+    var cap = maxLen || 72;
+    return s.length > cap ? s.slice(0, cap) : s;
+  }
+
+  function sanitizeStorageFileName(fileName) {
+    var base = String(fileName || 'file').replace(/[\\/:*?"<>|#%]/g, '-').trim();
+    return base || 'file';
+  }
+
+  function buildOneDriveStoragePath(ctx) {
+    var projectFolder = sanitizePathSegment(ctx.projectCode) + '_' + sanitizePathSegment(ctx.projectName || ctx.projectCode, 48);
+    var siteFolder = sanitizePathSegment(ctx.siteCode) + '_' + sanitizePathSegment(ctx.siteName || ctx.siteCode, 48);
+    var docFolder = sanitizePathSegment(ctx.documentTitle, 56);
+    if (ctx.checklistItemId) {
+      docFolder = sanitizePathSegment(String(ctx.checklistItemId).slice(-8), 12) + '_' + docFolder;
+    }
+    return [
+      'PEA-Solar-DocTrack',
+      sanitizePathSegment(ctx.contractNo),
+      projectFolder,
+      siteFolder,
+      docFolder,
+      'v' + Number(ctx.version || 1),
+      sanitizeStorageFileName(ctx.fileName)
+    ].join('/');
+  }
+
+  function formatBytes(n) {
+    var b = Number(n) || 0;
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+    return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function uploadFilesToChecklistItem(db, session, payload) {
+    requireFields(payload || {}, ['checklistItemId']);
+    var fileList = payload.files;
+    if (!fileList || !fileList.length) {
+      if (payload.fileName) {
+        fileList = [{ fileName: payload.fileName, mimeType: payload.mimeType, sizeBytes: payload.sizeBytes }];
+      } else {
+        throw new Error('กรุณาเลือกไฟล์อย่างน้อย 1 ไฟล์');
+      }
+    }
     var item = findById(db, 'ChecklistItems', payload.checklistItemId);
     if (!item) throw new Error('ไม่พบรายการเอกสาร');
     var site = findById(db, 'Sites', item.siteId);
+    if (!site) throw new Error('ไม่พบสถานที่');
     var project = findById(db, 'Projects', site.projectId);
+    if (!project) throw new Error('ไม่พบโครงการ');
     assertProjectEditable(project);
+    var contract = findById(db, 'Contracts', project.contractId);
+    if (!contract) throw new Error('ไม่พบสัญญา');
+    var templates = list(db, 'ChecklistTemplates');
+    var tpl = templates.filter(function (t) { return t.id === item.templateId; })[0];
+    var documentTitle = item.customTitle || (tpl && tpl.title) || 'เอกสารกำหนดเอง';
+
     var existingCurrent = findWhere(db, 'Files', function (f) {
       return f.checklistItemId === item.id && f.isCurrent;
     });
@@ -952,35 +1007,87 @@
     }
     var versions = findWhere(db, 'Files', function (f) { return f.checklistItemId === item.id; });
     var nextVersion = versions.reduce(function (m, f) { return Math.max(m, Number(f.version) || 0); }, 0) + 1;
-    var fileId = uid('file');
-    var path = ['PEA-Solar-DocTrack', project.id, site.id, item.id, 'v' + nextVersion, payload.fileName].join('/');
     existingCurrent.forEach(function (f) { updateById(db, 'Files', f.id, { isCurrent: false }); });
+
     var t = nowIso();
-    var file = append(db, 'Files', {
-      id: fileId,
-      checklistItemId: item.id,
-      fileName: payload.fileName,
-      mimeType: payload.mimeType || 'application/octet-stream',
-      sizeBytes: Number(payload.sizeBytes) || 0,
-      version: nextVersion,
-      reason: String(payload.reason || (nextVersion === 1 ? 'อัปโหลดครั้งแรก' : '')).trim(),
-      storageProvider: STORAGE.MOCK,
-      storagePath: path,
-      webUrl: getFolderUrl(db),
-      uploadedBy: session.userId,
-      uploadedAt: t,
-      isCurrent: true
+    var reason = String(payload.reason || (existingCurrent.length ? '' : 'อัปโหลดครั้งแรก')).trim();
+    var saved = [];
+    var folderUrl = getFolderUrl(db);
+
+    fileList.forEach(function (f) {
+      requireFields(f || {}, ['fileName']);
+      var path = buildOneDriveStoragePath({
+        contractNo: contract.contractNo,
+        projectCode: project.projectCode,
+        projectName: project.name,
+        siteCode: site.siteCode,
+        siteName: site.name,
+        documentTitle: documentTitle,
+        checklistItemId: item.id,
+        version: nextVersion,
+        fileName: f.fileName
+      });
+      var file = append(db, 'Files', {
+        id: uid('file'),
+        checklistItemId: item.id,
+        fileName: f.fileName,
+        mimeType: f.mimeType || 'application/octet-stream',
+        sizeBytes: Number(f.sizeBytes) || 0,
+        version: nextVersion,
+        reason: reason,
+        storageProvider: STORAGE.MOCK,
+        storagePath: path,
+        webUrl: folderUrl,
+        uploadedBy: session.userId,
+        uploadedAt: t,
+        isCurrent: true
+      });
+      saved.push(file);
+      writeAudit(db, session.userId, 'UPLOAD_FILE', 'File', file.id, {
+        checklistItemId: item.id,
+        version: nextVersion,
+        reason: reason,
+        fileName: file.fileName,
+        storagePath: path,
+        batchSize: fileList.length
+      });
     });
+
     updateById(db, 'ChecklistItems', item.id, {
       status: ITEM_STATUS.UPLOADED,
-      currentFileId: file.id,
+      currentFileId: saved[saved.length - 1].id,
       updatedAt: t
     });
-    writeAudit(db, session.userId, 'UPLOAD_FILE', 'File', file.id, {
-      checklistItemId: item.id, version: nextVersion, reason: file.reason, fileName: file.fileName
-    });
+
+    return {
+      files: saved,
+      file: saved[0],
+      storageNote: 'Mock: metadata + path ตามลำดับโครงการ — รองรับหลายไฟล์/ขนาดใหญ่ (Graph upload จริง)',
+      storagePathExample: saved[0] && saved[0].storagePath
+    };
+  }
+
+  function apiUploadFiles(token, payload) {
+    var session = requireSession(token);
+    requireRole(session, [ROLES.KHT]);
+    var db = loadDb();
+    var result = uploadFilesToChecklistItem(db, session, payload);
     saveDb(db);
-    return ok({ file: file, storageNote: 'Mock upload สำเร็จ — metadata ใน localStorage + ลิงก์โฟลเดอร์ SharePoint' });
+    return ok({
+      files: result.files,
+      file: result.file,
+      storageNote: result.storageNote,
+      storagePathExample: result.storagePathExample
+    });
+  }
+
+  function apiUploadFile(token, payload) {
+    var session = requireSession(token);
+    requireRole(session, [ROLES.KHT]);
+    var db = loadDb();
+    var result = uploadFilesToChecklistItem(db, session, payload);
+    saveDb(db);
+    return ok({ file: result.file, files: result.files, storageNote: result.storageNote });
   }
 
   function apiOpenFile(token, fileId) {
@@ -997,7 +1104,7 @@
         url: file.webUrl || getFolderUrl(db),
         provider: file.storageProvider || STORAGE.MOCK,
         path: file.storagePath || '',
-        message: 'โหมด Mock — เปิดโฟลเดอร์ SharePoint ที่กำหนด (ไฟล์ยังไม่ได้อัปโหลดจริง)'
+        message: 'โหมด Mock — path: ' + (file.storagePath || '') + ' (เปิดโฟลเดอร์ SharePoint ราก)'
       }
     });
   }
@@ -1379,6 +1486,7 @@
     apiSaveSite: wrap(apiSaveSite),
     apiAddCustomChecklistItem: wrap(apiAddCustomChecklistItem),
     apiUploadFile: wrap(apiUploadFile),
+    apiUploadFiles: wrap(apiUploadFiles),
     apiOpenFile: wrap(apiOpenFile),
     apiSubmitProject: wrap(apiSubmitProject),
     apiRequestRevision: wrap(apiRequestRevision),
