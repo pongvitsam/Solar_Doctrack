@@ -916,6 +916,23 @@
         actions.appendChild(el('p', { className: 'hint project-actions-hint', text: 'อัปโหลดเอกสารบังคับให้ครบทุกพื้นที่ก่อนส่งตรวจ' }));
       }
     }
+    if (isKHT() && p.status === 'Submitted') {
+      if (state.project.canRecall) {
+        actions.appendChild(el('button', {
+          className: 'btn btn-gold btn-lg', type: 'button',
+          onClick: recallProject
+        }, ['ดึงกลับมาแก้ไข']));
+        actions.appendChild(el('p', {
+          className: 'hint project-actions-hint',
+          text: 'ดึงกลับได้เมื่อ กธพ. ยังไม่เปิดดูโครงการ'
+        }));
+      } else {
+        actions.appendChild(el('p', {
+          className: 'hint project-actions-hint',
+          text: 'กธพ. เปิดดูแล้ว — รอ กธพ. ขอแก้ไขเพื่อแก้ไขเอกสาร'
+        }));
+      }
+    }
     if (isGTHP() && p.status === 'Submitted') {
       actions.appendChild(el('button', { className: 'btn btn-gold btn-lg', type: 'button', onClick: openRevisionModal }, ['ขอแก้ไข']));
       actions.appendChild(el('button', { className: 'btn btn-primary btn-lg', type: 'button', onClick: acceptProject }, ['ยอมรับเอกสาร']));
@@ -1889,6 +1906,15 @@
       var auditEl = $('#m_userAudit');
       if (auditEl) loadUserAuditInto(auditEl, existing.id);
     }
+  }
+
+  async function recallProject() {
+    if (!confirm('ดึงโครงการกลับมาแก้ไข?\n(ได้เฉพาะก่อน กธพ. เปิดดู)')) return;
+    try {
+      await withLoad(function () { return api('apiRecallProject', getToken(), state.project.project.id); });
+      toast('ดึงกลับมาแก้ไขแล้ว — สามารถอัปโหลดและแก้ไขได้', 'ok');
+      loadRouteData();
+    } catch (e) { toast(e.message, 'err'); }
   }
 
   async function submitProject() {

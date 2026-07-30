@@ -558,7 +558,7 @@
       name: 'โครงการโซลาร์การประปา 10 พื้นที่',
       description: 'ติดตั้งระบบโซลาร์บนอาคารการประปา 10 แห่ง',
       status: PROJECT_STATUS.DRAFT, ownerId: 'usr_kht_001',
-      firstSubmittedAt: '', completedAt: '', reviewedAt: '',
+      firstSubmittedAt: '', completedAt: '', reviewedAt: '', reviewOpenedAt: '',
       createdAt: t, updatedAt: ago(1, 3)
     });
     var siteNames = [
@@ -592,7 +592,7 @@
       name: 'โครงการโซลาร์สำนักงานเขต PEA',
       description: 'ติดตั้งบนอาคารสำนักงานเขตตัวอย่าง 3 พื้นที่',
       status: PROJECT_STATUS.NEEDS_REVISION, ownerId: 'usr_kht_002',
-      firstSubmittedAt: ago(8, 4), completedAt: '', reviewedAt: ago(2, 5),
+      firstSubmittedAt: ago(8, 4), completedAt: '', reviewedAt: ago(2, 5), reviewOpenedAt: '',
       createdAt: t, updatedAt: ago(1, 5)
     });
     ['OFF-A', 'OFF-B', 'OFF-C'].forEach(function (code, idx) {
@@ -615,7 +615,7 @@
       name: 'โครงการโซลาร์คลังพัสดุภาคกลาง',
       description: 'เอกสารบังคับครบ รอ กธพ. ตรวจ',
       status: PROJECT_STATUS.SUBMITTED, ownerId: 'usr_kht_002',
-      firstSubmittedAt: ago(3, 6), completedAt: '', reviewedAt: '',
+      firstSubmittedAt: ago(3, 6), completedAt: '', reviewedAt: '', reviewOpenedAt: '',
       createdAt: ago(50), updatedAt: ago(3, 6)
     });
     append(db, 'Sites', {
@@ -633,7 +633,7 @@
       name: 'โครงการโซลาร์โรงพยาบาลชุมชน',
       description: 'ตัวอย่างโครงการที่ตรวจและยอมรับเรียบร้อย',
       status: PROJECT_STATUS.COMPLETED, ownerId: 'usr_kht_003',
-      firstSubmittedAt: ago(30), completedAt: ago(15, 2), reviewedAt: ago(15, 2),
+      firstSubmittedAt: ago(30), completedAt: ago(15, 2), reviewedAt: ago(15, 2), reviewOpenedAt: ago(15, 3),
       createdAt: ago(150), updatedAt: ago(15, 2)
     });
     append(db, 'Sites', {
@@ -727,6 +727,22 @@
     var sites = findWhere(db, 'Sites', function (s) { return s.projectId === projectId; });
     if (!sites.length) return false;
     return sites.every(function (s) { return siteRequiredComplete(db, s.id); });
+  }
+
+  function canRecallProject(project) {
+    return !!(project &&
+      project.status === PROJECT_STATUS.SUBMITTED &&
+      !project.reviewOpenedAt);
+  }
+
+  function markProjectReviewOpened(db, projectId, userId) {
+    var project = findById(db, 'Projects', projectId);
+    if (!project || project.status !== PROJECT_STATUS.SUBMITTED || project.reviewOpenedAt) return project;
+    var user = getUserById(db, userId);
+    if (!user || user.role !== ROLES.GTHP) return project;
+    var t = nowIso();
+    writeAudit(db, userId, 'OPEN_REVIEW', 'Project', projectId, { reviewOpenedAt: t });
+    return updateById(db, 'Projects', projectId, { reviewOpenedAt: t, updatedAt: t });
   }
 
   function assertProjectEditable(project) {
@@ -843,11 +859,18 @@
   }
 
   function apiGetProject(token, projectId) {
-    requireSession(token);
+    var session = requireSession(token);
     requireFields({ projectId: projectId }, ['projectId']);
     var db = loadDb();
     var project = findById(db, 'Projects', projectId);
     if (!project) throw new Error('ไม่พบโครงการ');
+
+    if (session.role === ROLES.GTHP && project.status === PROJECT_STATUS.SUBMITTED) {
+      markProjectReviewOpened(db, projectId, session.userId);
+      project = findById(db, 'Projects', projectId);
+      saveDb(db);
+    }
+
     var contract = findById(db, 'Contracts', project.contractId);
     var owner = getUserById(db, project.ownerId);
     var sites = findWhere(db, 'Sites', function (s) { return s.projectId === projectId; })
@@ -884,7 +907,8 @@
       sites: siteViews,
       comments: comments,
       canSubmit: projectRequiredComplete(db, projectId) &&
-        (project.status === PROJECT_STATUS.DRAFT || project.status === PROJECT_STATUS.NEEDS_REVISION)
+        (project.status === PROJECT_STATUS.DRAFT || project.status === PROJECT_STATUS.NEEDS_REVISION),
+      canRecall: session.role === ROLES.KHT && canRecallProject(project)
     });
   }
 
@@ -971,6 +995,7 @@
       firstSubmittedAt: '',
       completedAt: '',
       reviewedAt: '',
+      reviewOpenedAt: '',
       createdAt: t,
       updatedAt: t
     });
@@ -1298,7 +1323,7 @@
       throw new Error('รายการบังคับยังไม่ครบทุกพื้นที่ — ส่งตรวจไม่ได้');
     }
     var t = nowIso();
-    var patch = { status: PROJECT_STATUS.SUBMITTED, updatedAt: t };
+    var patch = { status: PROJECT_STATUS.SUBMITTED, reviewOpenedAt: '', updatedAt: t };
     if (!project.firstSubmittedAt) patch.firstSubmittedAt = t;
     var updated = updateById(db, 'Projects', projectId, patch);
     findWhere(db, 'Sites', function (s) { return s.projectId === projectId; }).forEach(function (s) {
@@ -1306,6 +1331,34 @@
     });
     writeAudit(db, session.userId, 'SUBMIT_PROJECT', 'Project', projectId, { firstSubmittedAt: updated.firstSubmittedAt });
     notifyRole(db, ROLES.GTHP, 'PROJECT_SUBMITTED', 'ส่งตรวจ: ' + project.name, 'รอ กธพ. ตรวจสอบ', 'project:' + projectId);
+    saveDb(db);
+    return ok({ project: updated });
+  }
+
+  function apiRecallProject(token, projectId) {
+    var session = requireSession(token);
+    requireRole(session, [ROLES.KHT]);
+    requireFields({ projectId: projectId }, ['projectId']);
+    var db = loadDb();
+    var project = findById(db, 'Projects', projectId);
+    if (!project) throw new Error('ไม่พบโครงการ');
+    if (!canRecallProject(project)) {
+      if (project.status === PROJECT_STATUS.SUBMITTED && project.reviewOpenedAt) {
+        throw new Error('กธพ. เปิดดูแล้ว — ไม่สามารถดึงกลับได้ รอ กธพ. ขอแก้ไข');
+      }
+      throw new Error('ดึงกลับได้เฉพาะโครงการที่ส่งตรวจและ กธพ. ยังไม่เปิดดู');
+    }
+    var t = nowIso();
+    var updated = updateById(db, 'Projects', projectId, {
+      status: PROJECT_STATUS.DRAFT,
+      reviewOpenedAt: '',
+      updatedAt: t
+    });
+    findWhere(db, 'Sites', function (s) { return s.projectId === projectId; }).forEach(function (s) {
+      updateById(db, 'Sites', s.id, { status: PROJECT_STATUS.DRAFT, updatedAt: t });
+    });
+    writeAudit(db, session.userId, 'RECALL_PROJECT', 'Project', projectId, { fromStatus: PROJECT_STATUS.SUBMITTED });
+    notifyRole(db, ROLES.GTHP, 'PROJECT_RECALLED', 'ดึงกลับ: ' + project.name, 'กขท. ดึงโครงการกลับมาแก้ไขก่อน กธพ. เปิดดู', 'project:' + projectId);
     saveDb(db);
     return ok({ project: updated });
   }
@@ -1669,6 +1722,7 @@
     apiDeleteFile: wrap(apiDeleteFile),
     apiOpenFile: wrap(apiOpenFile),
     apiSubmitProject: wrap(apiSubmitProject),
+    apiRecallProject: wrap(apiRecallProject),
     apiRequestRevision: wrap(apiRequestRevision),
     apiAcceptProject: wrap(apiAcceptProject),
     apiAddComment: wrap(apiAddComment),

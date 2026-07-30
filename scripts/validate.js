@@ -159,6 +159,14 @@ console.log('4) Mock API seed + workflow (vm + localStorage polyfill)');
               return API.apiSubmitProject(tok, prj.project.id);
             }).then(function (sub) {
               assert(sub.project.status === 'Submitted', 'submit → Submitted');
+              return API.apiGetProject(tok, prj.project.id);
+            }).then(function (detail) {
+              assert(detail.canRecall === true, 'can recall before gthp opens');
+              return API.apiRecallProject(tok, prj.project.id);
+            }).then(function (rec) {
+              assert(rec.project.status === 'Draft', 'recall → Draft');
+              return API.apiSubmitProject(tok, prj.project.id);
+            }).then(function () {
               return API.apiLogin('GTHP001');
             }).then(function (gLogin) {
               var gTok = gLogin.session.token;
