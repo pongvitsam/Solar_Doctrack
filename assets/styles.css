@@ -704,6 +704,18 @@ table.data tr.clickable { cursor: pointer; }
   padding: 0 14px 14px 42px;
   border-top: 1px solid var(--line);
 }
+.contract-group--single {
+  border-color: rgba(201,162,39,0.35);
+}
+.contract-group--single .contract-group-desc {
+  margin-left: 14px;
+}
+.contract-group--single .contract-group-body {
+  padding: 10px 14px 14px;
+}
+.contract-group--single .cards {
+  grid-template-columns: 1fr;
+}
 .empty-sm {
   padding: 16px 8px;
   font-size: 0.92rem;
