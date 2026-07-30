@@ -583,7 +583,7 @@
     var panel = el('div', { className: 'panel panel--flat' });
     panel.appendChild(el('div', { className: 'panel-h panel-h--simple' }, [
       el('h3', { text: 'สัญญาและโครงการ' }),
-      el('span', { className: 'hint', text: 'แตะสัญญาเพื่อดูโครงการข้างใน' })
+      el('span', { className: 'hint', text: 'สัญญา 1 โครงการเปิดได้ทันที · หลายโครงการให้แตะสัญญาเพื่อดูรายการ' })
     ]));
     panel.appendChild(renderToolbar());
     if (state.route === 'contract' && state.routeParams.id) {
@@ -652,24 +652,35 @@
     var wrap = el('div', { className: 'contract-groups' });
     groups.forEach(function (g) {
       var c = g.contract;
-      var expanded = isContractExpanded_(c.id);
-      var block = el('div', { className: 'contract-group' + (expanded ? ' is-open' : '') });
+      var singleProject = g.projects.length === 1;
+      var expanded = singleProject || isContractExpanded_(c.id);
+      var block = el('div', { className: 'contract-group' + (expanded ? ' is-open' : '') + (singleProject ? ' contract-group--single' : '') });
       var head = el('div', { className: 'contract-group-head' });
-      head.appendChild(el('button', {
-        type: 'button',
-        className: 'contract-group-toggle',
-        onClick: function () { toggleContractExpanded_(c.id); }
-      }, [expanded ? '▾' : '▸']));
+      if (!singleProject) {
+        head.appendChild(el('button', {
+          type: 'button',
+          className: 'contract-group-toggle',
+          onClick: function () { toggleContractExpanded_(c.id); }
+        }, [expanded ? '▾' : '▸']));
+      }
       head.appendChild(el('div', { className: 'contract-group-title' }, [
         el('strong', { text: c.contractNo + ' — ' + c.title }),
         el('div', { className: 'hint' }, [
           document.createTextNode('ลงนาม '),
           elDateBE(c.signedAt),
-          document.createTextNode(' · ' + g.projects.length + ' โครงการ')
+          document.createTextNode(singleProject ? ' · โครงการเดียว' : (' · ' + g.projects.length + ' โครงการ'))
         ])
       ]));
       var headActions = el('div', { className: 'contract-group-actions' });
-      if (isKHT()) {
+      if (singleProject) {
+        headActions.appendChild(el('button', {
+          className: 'btn btn-primary btn-sm', type: 'button',
+          onClick: function (ev) {
+            ev.stopPropagation();
+            navigate('project', { id: g.projects[0].project.id });
+          }
+        }, ['เข้าโครงการ →']));
+      } else if (isKHT()) {
         headActions.appendChild(el('button', {
           className: 'btn btn-primary btn-sm', type: 'button',
           onClick: function (ev) {
