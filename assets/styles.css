@@ -519,6 +519,59 @@ table.data tr.clickable { cursor: pointer; }
   gap: 10px;
   margin: 10px 0 4px;
 }
+.contract-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.contract-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(160deg, #fff, #faf8ff);
+  overflow: hidden;
+}
+.contract-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.contract-group-toggle {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--pea-purple);
+  padding: 4px 6px;
+  line-height: 1;
+}
+.contract-group-title {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.contract-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.contract-group-desc {
+  margin: 0 14px 8px 42px;
+}
+.contract-group-body {
+  padding: 0 14px 14px 42px;
+  border-top: 1px solid var(--line);
+}
+.empty-sm {
+  padding: 16px 8px;
+  font-size: 0.92rem;
+}
+.locked-contract-label {
+  font-weight: 600;
+  color: var(--pea-purple-deep);
+  margin: 4px 0 0;
+}
 .project-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
