@@ -432,7 +432,7 @@
       }, navBtnChildren(n)));
     });
     side.appendChild(el('div', { className: 'sidebar-footer' }, [
-      el('div', { className: 'sidebar-role', text: 'กอง' + roleLabelTh(state.session.role) }),
+      el('div', { className: 'sidebar-role', text: roleLabelTh(state.session.role) }),
       el('div', { className: 'sidebar-user', text: state.session.name }),
       el('button', { className: 'btn btn-ghost btn-sm btn-logout', type: 'button', onClick: doLogout }, ['ออกจากระบบ'])
     ]));
