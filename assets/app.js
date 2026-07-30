@@ -6,12 +6,13 @@
   'use strict';
 
   var TOKEN_KEY = 'pea_doctrack_token';
+  var QUICK_GUIDE_KEY = 'pea_doctrack_hide_guide';
   var state = {
     boot: null,
     session: null,
     route: 'dashboard',
     routeParams: {},
-    viewMode: 'table',
+    viewMode: 'cards',
     dashboard: null,
     project: null,
     reviewQueue: null,
@@ -166,29 +167,62 @@
 
   function renderLoginDemoPanel() {
     var wrap = el('div', { className: 'demo-login-panel' });
-    wrap.appendChild(el('div', { className: 'demo-login-title', text: 'บัญชีตัวอย่าง — เลือกกองก่อนเข้าใช้งาน' }));
+    wrap.appendChild(el('div', { className: 'demo-login-title', text: 'เลือกกองของคุณ' }));
     var grid = el('div', { className: 'demo-login-grid' });
     getLoginDemoAccounts().forEach(function (a) {
       grid.appendChild(el('button', {
         type: 'button',
         className: 'demo-login-card demo-login-card--' + String(a.role || '').toLowerCase(),
-        onClick: function () {
-          var inp = $('#empId');
-          if (inp) {
-            inp.value = a.employeeId;
-            inp.focus();
-          }
-        }
+        onClick: function () { doLogin(a.employeeId); }
       }, [
         el('span', { className: 'demo-login-role', text: roleLabelTh(a.role) }),
-        el('span', { className: 'demo-login-id', text: a.employeeId }),
-        el('span', { className: 'demo-login-name', text: a.name || '' }),
-        el('span', { className: 'demo-login-action', text: 'คลิกเพื่อใส่รหัส' })
+        el('span', { className: 'demo-login-desc', text: a.role === 'KHT' ? 'อัปโหลดและส่งเอกสาร' : 'ตรวจและอนุมัติเอกสาร' }),
+        el('span', { className: 'demo-login-action', text: 'เข้าใช้งาน →' })
       ]));
     });
     wrap.appendChild(grid);
-    wrap.appendChild(el('p', { className: 'hint demo-login-hint', text: 'จากนั้นกด «เข้าสู่ระบบ» (รหัสอื่นในระบบยังใช้ได้ตามปกติ)' }));
     return wrap;
+  }
+
+  function isQuickGuideHidden() {
+    try { return localStorage.getItem(QUICK_GUIDE_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function hideQuickGuide() {
+    try { localStorage.setItem(QUICK_GUIDE_KEY, '1'); } catch (e) {}
+    render();
+  }
+
+  function renderQuickGuide() {
+    if (isQuickGuideHidden() || !state.session) return null;
+    var steps = isKHT()
+      ? [
+          { n: '1', t: 'เปิดสัญญา → เลือกโครงการ' },
+          { n: '2', t: 'อัปโหลดเอกสารทุกพื้นที่' },
+          { n: '3', t: 'กด «ส่งตรวจ» เมื่อครบ' }
+        ]
+      : [
+          { n: '1', t: 'ดูรายการ «รอตรวจ»' },
+          { n: '2', t: 'เปิดเอกสารแต่ละพื้นที่' },
+          { n: '3', t: 'ขอแก้ไข หรือ ยอมรับ' }
+        ];
+    var box = el('div', { className: 'quick-guide' });
+    box.appendChild(el('div', { className: 'quick-guide-head' }, [
+      el('strong', { text: 'เริ่มใช้งาน 3 ขั้น' }),
+      el('button', {
+        type: 'button', className: 'btn btn-ghost btn-sm quick-guide-dismiss',
+        onClick: hideQuickGuide
+      }, ['ซ่อน'])
+    ]));
+    var row = el('div', { className: 'quick-guide-steps' });
+    steps.forEach(function (s) {
+      row.appendChild(el('div', { className: 'quick-guide-step' }, [
+        el('span', { className: 'quick-guide-num', text: s.n }),
+        el('span', { text: s.t })
+      ]));
+    });
+    box.appendChild(row);
+    return box;
   }
 
   function setUnreadNotifications(count) {
@@ -293,21 +327,22 @@
 
   function renderLogin() {
     var page = el('div', { className: 'login-page' });
-    var card = el('div', { className: 'login-card' });
+    var card = el('div', { className: 'login-card login-card--simple' });
     card.appendChild(el('div', { className: 'brand-block' }, [
       el('div', { className: 'brand-logo', text: 'PEA' }),
       el('h1', { text: 'Solar DocTrack' }),
-      el('p', { text: 'ติดตามเอกสารโครงการโซลาร์รูฟท็อป' })
+      el('p', { text: 'ติดตามเอกสารโซลาร์ — ใช้งานง่าย เปลี่ยนคนได้ทันที' })
     ]));
     if (state.boot && state.boot.deploymentKind === 'static-demo') {
       card.appendChild(el('div', {
-        className: 'auth-warn',
-        text: 'โหมดสาธิต (GitHub Pages) — ข้อมูลใน localStorage ครบทุกสถานะ · Production จริงใช้ Web App Google Apps Script'
+        className: 'auth-warn auth-warn--soft',
+        text: 'โหมดสาธิต · ข้อมูลในเครื่องนี้เท่านั้น'
       }));
     }
     card.appendChild(renderLoginDemoPanel());
-    card.appendChild(el('div', { className: 'auth-warn', text: (state.boot && state.boot.authWarning) || '' }));
 
+    var manual = el('details', { className: 'login-manual' });
+    manual.appendChild(el('summary', { text: 'เข้าด้วยรหัสพนักงาน' }));
     var form = el('form', {
       onSubmit: function (ev) {
         ev.preventDefault();
@@ -318,22 +353,20 @@
       el('label', { text: 'รหัสพนักงาน' }),
       el('input', { id: 'empId', name: 'employeeId', placeholder: 'เช่น KHT001', autocomplete: 'username', required: 'required' })
     ]));
-    form.appendChild(el('button', { className: 'btn btn-primary', type: 'submit', style: 'width:100%' }, ['เข้าสู่ระบบ']));
-    card.appendChild(form);
+    form.appendChild(el('button', { className: 'btn btn-primary btn-block', type: 'submit' }, ['เข้าสู่ระบบ']));
+    manual.appendChild(form);
+    card.appendChild(manual);
 
-    var setupBtn = el('button', {
-      className: 'btn btn-ghost', type: 'button', style: 'width:100%;margin-top:10px',
+    card.appendChild(el('button', {
+      className: 'btn btn-ghost btn-block login-setup-btn', type: 'button',
       onClick: async function () {
         try {
-          await withLoad(async function () {
-            await api('apiRunSetup', '');
-          });
-          toast('Mock data พร้อมแล้ว — ลองเข้าสู่ระบบด้วย KHT001', 'ok');
+          await withLoad(async function () { await api('apiRunSetup', ''); });
+          toast('เตรียมข้อมูลตัวอย่างแล้ว — เลือกกองด้านบน', 'ok');
           boot();
         } catch (e) { toast(e.message, 'err'); }
       }
-    }, ['เตรียม / เติม Mock Data']);
-    card.appendChild(setupBtn);
+    }, ['ครั้งแรก? เตรียมข้อมูลตัวอย่าง']));
     page.appendChild(card);
     return page;
   }
@@ -359,18 +392,21 @@
   }
 
   function navItems() {
-    var items = [
-      { id: 'dashboard', label: 'สัญญาและโครงการ' },
-      { id: 'notifications', label: 'การแจ้งเตือน' },
-      { id: 'email', label: 'การแจ้งเตือนอีเมล' }
-    ];
     if (isGTHP()) {
-      items.splice(2, 0, { id: 'review', label: 'คิวตรวจเอกสาร' });
-      items.push({ id: 'users', label: 'รหัสเข้าใช้งาน' });
-      items.push({ id: 'audit', label: 'Audit Log' });
-      items.push({ id: 'settings', label: 'ตั้งค่า' });
+      return [
+        { id: 'dashboard', label: 'หน้าหลัก' },
+        { id: 'review', label: 'รอตรวจ' },
+        { id: 'notifications', label: 'แจ้งเตือน' },
+        { id: 'users', label: 'ผู้ใช้' },
+        { id: 'audit', label: 'ประวัติ' },
+        { id: 'settings', label: 'ตั้งค่า' }
+      ];
     }
-    return items;
+    return [
+      { id: 'dashboard', label: 'หน้าหลัก' },
+      { id: 'notifications', label: 'แจ้งเตือน' },
+      { id: 'email', label: 'อีเมล' }
+    ];
   }
 
   function renderShell() {
@@ -396,11 +432,9 @@
       }, navBtnChildren(n)));
     });
     side.appendChild(el('div', { className: 'sidebar-footer' }, [
-      el('div', { text: state.session.name }),
-      el('div', null, [
-        el('span', { className: 'role-tag', text: state.session.role === 'KHT' ? 'กขท.' : 'กธพ.' })
-      ]),
-      el('button', { className: 'btn btn-ghost btn-sm', type: 'button', style: 'margin-top:10px;width:100%;color:#1e1228', onClick: doLogout }, ['ออกจากระบบ'])
+      el('div', { className: 'sidebar-role', text: 'กอง' + roleLabelTh(state.session.role) }),
+      el('div', { className: 'sidebar-user', text: state.session.name }),
+      el('button', { className: 'btn btn-ghost btn-sm btn-logout', type: 'button', onClick: doLogout }, ['ออกจากระบบ'])
     ]));
     shell.appendChild(side);
 
@@ -414,11 +448,11 @@
 
   function renderTopbar() {
     var titles = {
-      dashboard: 'สัญญาและโครงการ',
-      contracts: 'สัญญาและโครงการ',
-      contract: 'สัญญาและโครงการ',
+      dashboard: 'หน้าหลัก',
+      contracts: 'หน้าหลัก',
+      contract: 'หน้าหลัก',
       project: 'รายละเอียดโครงการ',
-      review: 'คิวตรวจเอกสาร (กธพ.)',
+      review: 'รอตรวจ',
       notifications: 'การแจ้งเตือน',
       users: 'รหัสเข้าใช้งาน',
       audit: 'Audit Log',
@@ -501,10 +535,10 @@
 
   function renderToolbar(opts) {
     opts = opts || {};
-    var bar = el('div', { className: 'toolbar' });
+    var bar = el('div', { className: 'toolbar toolbar--simple' });
     var search = el('input', {
       className: 'search-input',
-      placeholder: opts.searchPlaceholder || 'ค้นหาโครงการ / สัญญา / ผู้รับผิดชอบ',
+      placeholder: opts.searchPlaceholder || 'ค้นหา…',
       value: state.filters.q || ''
     });
     search.addEventListener('input', function () {
@@ -513,7 +547,7 @@
     });
     bar.appendChild(search);
 
-    var status = el('select', { className: 'filter-select', style: 'max-width:160px' });
+    var status = el('select', { className: 'filter-select filter-select--status' });
     [['', 'ทุกสถานะ'], ['Draft', 'ร่าง'], ['Submitted', 'ส่งตรวจ'], ['NeedsRevision', 'ขอแก้ไข'], ['Completed', 'ยอมรับ']].forEach(function (o) {
       var opt = el('option', { value: o[0], text: o[1] });
       if (state.filters.status === o[0]) opt.selected = true;
@@ -521,27 +555,6 @@
     });
     status.addEventListener('change', function () { state.filters.status = status.value; render(); });
     bar.appendChild(status);
-
-    var sort = el('select', { className: 'filter-select', style: 'max-width:160px' });
-    [['updated', 'ล่าสุด'], ['name', 'ชื่อ'], ['status', 'สถานะ'], ['progress', 'ความคืบหน้า']].forEach(function (o) {
-      var opt = el('option', { value: o[0], text: o[1] });
-      if (state.filters.sort === o[0]) opt.selected = true;
-      sort.appendChild(opt);
-    });
-    sort.addEventListener('change', function () { state.filters.sort = sort.value; render(); });
-    bar.appendChild(sort);
-
-    var toggle = el('div', { className: 'view-toggle' }, [
-      el('button', {
-        type: 'button', className: state.viewMode === 'cards' ? 'active' : '',
-        onClick: function () { state.viewMode = 'cards'; render(); }
-      }, ['การ์ด']),
-      el('button', {
-        type: 'button', className: state.viewMode === 'table' ? 'active' : '',
-        onClick: function () { state.viewMode = 'table'; render(); }
-      }, ['ตาราง'])
-    ]);
-    bar.appendChild(toggle);
     return bar;
   }
 
@@ -564,10 +577,13 @@
     });
     wrap.appendChild(grid);
 
-    var panel = el('div', { className: 'panel' });
-    panel.appendChild(el('div', { className: 'panel-h' }, [
+    var guide = renderQuickGuide();
+    if (guide) wrap.appendChild(guide);
+
+    var panel = el('div', { className: 'panel panel--flat' });
+    panel.appendChild(el('div', { className: 'panel-h panel-h--simple' }, [
       el('h3', { text: 'สัญญาและโครงการ' }),
-      el('span', { className: 'hint', text: '1 สัญญามีได้หลายโครงการ · แจ้งเตือนยังไม่อ่าน: ' + (kpi.unreadNotifications || 0) })
+      el('span', { className: 'hint', text: 'แตะสัญญาเพื่อดูโครงการข้างใน' })
     ]));
     panel.appendChild(renderToolbar());
     if (state.route === 'contract' && state.routeParams.id) {
@@ -661,15 +677,6 @@
             openProjectModal(null, c.id);
           }
         }, ['+ โครงการ']));
-        headActions.appendChild(el('button', {
-          className: 'btn btn-ghost btn-sm', type: 'button',
-          onClick: function (ev) { ev.stopPropagation(); openContractModal(c); }
-        }, ['แก้ไขสัญญา']));
-      } else if (isGTHP()) {
-        headActions.appendChild(el('button', {
-          className: 'btn btn-ghost btn-sm', type: 'button',
-          onClick: function (ev) { ev.stopPropagation(); openContractModal(c); }
-        }, ['ดูสัญญา']));
       }
       head.appendChild(headActions);
       block.appendChild(head);
@@ -877,36 +884,39 @@
     }));
     head.appendChild(el('p', { className: 'hint', style: 'margin-top:8px', text: p.description || '' }));
 
-    var actions = el('div', { className: 'toolbar', style: 'margin-top:12px' });
+    var actions = el('div', { className: 'project-actions' });
     if (isKHT() && (p.status === 'Draft' || p.status === 'NeedsRevision')) {
       actions.appendChild(el('button', {
-        className: 'btn btn-ghost btn-sm', type: 'button',
-        onClick: function () { openProjectModal(p); }
-      }, ['แก้ไขโครงการ']));
-      actions.appendChild(el('button', {
-        className: 'btn btn-ghost btn-sm', type: 'button',
-        onClick: openAddSiteModal
-      }, ['+ พื้นที่']));
-      actions.appendChild(el('button', {
-        className: 'btn btn-primary btn-sm', type: 'button',
+        className: 'btn btn-primary btn-lg', type: 'button',
         disabled: state.project.canSubmit ? null : 'disabled',
         onClick: submitProject
-      }, ['ส่งตรวจ']));
+      }, ['ส่งตรวจเอกสาร']));
+      actions.appendChild(el('div', { className: 'project-actions-secondary' }, [
+        el('button', {
+          className: 'btn btn-ghost btn-sm', type: 'button',
+          onClick: function () { openProjectModal(p); }
+        }, ['แก้ไขโครงการ']),
+        el('button', {
+          className: 'btn btn-ghost btn-sm', type: 'button',
+          onClick: openAddSiteModal
+        }, ['+ พื้นที่'])
+      ]));
       if (!state.project.canSubmit) {
-        actions.appendChild(el('span', { className: 'hint', text: 'ส่งได้เมื่อรายการบังคับครบทุกพื้นที่' }));
+        actions.appendChild(el('p', { className: 'hint project-actions-hint', text: 'อัปโหลดเอกสารบังคับให้ครบทุกพื้นที่ก่อนส่งตรวจ' }));
       }
     }
     if (isGTHP() && p.status === 'Submitted') {
-      actions.appendChild(el('button', { className: 'btn btn-gold btn-sm', type: 'button', onClick: openRevisionModal }, ['ขอแก้ไข']));
-      actions.appendChild(el('button', { className: 'btn btn-primary btn-sm', type: 'button', onClick: acceptProject }, ['ยอมรับ']));
+      actions.appendChild(el('button', { className: 'btn btn-gold btn-lg', type: 'button', onClick: openRevisionModal }, ['ขอแก้ไข']));
+      actions.appendChild(el('button', { className: 'btn btn-primary btn-lg', type: 'button', onClick: acceptProject }, ['ยอมรับเอกสาร']));
     }
-    head.appendChild(actions);
+    if (actions.childNodes.length) head.appendChild(actions);
     wrap.appendChild(head);
 
     // Sites
-    var sitesPanel = el('div', { className: 'panel' });
-    sitesPanel.appendChild(el('div', { className: 'panel-h' }, [
-      el('h3', { text: 'พื้นที่ติดตั้ง (' + state.project.sites.length + ')' })
+    var sitesPanel = el('div', { className: 'panel panel--flat' });
+    sitesPanel.appendChild(el('div', { className: 'panel-h panel-h--simple' }, [
+      el('h3', { text: 'พื้นที่ติดตั้ง' }),
+      el('span', { className: 'hint', text: state.project.sites.length + ' แห่ง · แตะเพื่อเปิด/ปิดรายการเอกสาร' })
     ]));
     var list = el('div', { className: 'site-list' });
     state.project.sites.forEach(function (sv, idx) {
@@ -994,12 +1004,9 @@
           }, ['ลบ']));
         }
         cur.appendChild(el('li', null, [
-          document.createTextNode(f.fileName + ' · v' + f.version + ' · ' + formatBytes(f.sizeBytes) + ' '),
+          document.createTextNode(f.fileName + ' · ' + formatBytes(f.sizeBytes) + ' '),
           actions
         ]));
-        if (f.storagePath) {
-          cur.appendChild(el('li', { className: 'hint storage-path-hint', text: 'OneDrive: ' + f.storagePath }));
-        }
       });
       left.appendChild(cur);
     }
@@ -1025,9 +1032,9 @@
     var right = el('div', { style: 'display:grid;gap:6px' });
     if (canEditFiles) {
       right.appendChild(el('button', {
-        className: 'btn btn-primary btn-sm', type: 'button',
+        className: 'btn btn-primary btn-upload', type: 'button',
         onClick: function () { openUploadModal(iv, site); }
-      }, [currentFiles.length ? 'เพิ่มไฟล์' : 'อัปโหลด']));
+      }, [currentFiles.length ? '+ เพิ่มไฟล์' : '+ อัปโหลด']));
     }
     row.appendChild(right);
     return row;
