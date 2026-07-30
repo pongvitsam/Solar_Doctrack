@@ -75,7 +75,14 @@
       saveDb(seed);
       return seed;
     }
-    try { return JSON.parse(raw); }
+    try {
+      var db = JSON.parse(raw);
+      if (getSetting(db, 'checklistSpecVersion', '') !== CHECKLIST_SPEC_VERSION) {
+        syncChecklistTemplates(db);
+        saveDb(db);
+      }
+      return db;
+    }
     catch (e) {
       var rebuilt = buildSeed();
       saveDb(rebuilt);
@@ -318,18 +325,32 @@
   }
 
   function templatesSpec() {
-    return [
-      { category: 'โครงสร้างหลังคา', title: 'แบบโครงสร้างหลังคา', description: 'แบบก่อสร้างโครงสร้างรองรับแผง', required: true, sortOrder: 1 },
-      { category: 'โครงสร้างหลังคา', title: 'Civil Load Analysis', description: 'รายงานวิเคราะห์น้ำหนักบรรทุก', required: true, sortOrder: 2 },
-      { category: 'ระบบไฟฟ้า', title: 'Load Profile', description: 'โปรไฟล์โหลดไฟฟ้า', required: true, sortOrder: 3 },
-      { category: 'ระบบไฟฟ้า', title: 'Single Line Diagram (SLD)', description: 'แผนภาพสายไฟฟ้า', required: true, sortOrder: 4 },
-      { category: 'ระบบไฟฟ้า', title: 'MDB / Panel Schedule', description: 'รายละเอียดตู้ MDB', required: true, sortOrder: 5 },
-      { category: 'ระบบไฟฟ้า', title: 'Zero Export Scheme', description: 'แบบควบคุม Zero Export', required: true, sortOrder: 6 },
-      { category: 'พื้นที่และกรรมสิทธิ์', title: 'แผนที่/ผังพื้นที่ติดตั้ง', description: 'แสดงขอบเขตพื้นที่', required: true, sortOrder: 7 },
-      { category: 'พื้นที่และกรรมสิทธิ์', title: 'เอกสารกรรมสิทธิ์/สิทธิใช้ประโยชน์', description: 'โฉนด/สัญญาเช่า/หนังสือยินยอม', required: true, sortOrder: 8 },
-      { category: 'กฎหมายและใบอนุญาต', title: 'ใบอนุญาตก่อสร้าง/ดัดแปลง', description: 'เอกสารอนุญาตที่เกี่ยวข้อง', required: false, sortOrder: 9 },
-      { category: 'กฎหมายและใบอนุญาต', title: 'ใบอนุญาตประกอบกิจการไฟฟ้า', description: 'ถ้ามีตามเงื่อนไขโครงการ', required: false, sortOrder: 10 }
-    ].map(function (tpl, idx) {
+    var raw = [
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'แบบหลังคาและโครงสร้างอาคาร (AS-BUILT)', description: 'ทุกอาคารที่จะติดแผง PV', required: true, sortOrder: 1 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'ระบุชนิดลอน (L-FEET / KIPLOK)', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 2 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'ระบุทิศทางและมุมเอียงของหลังคาทุกอาคาร', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 3 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'ตำแหน่งที่จะติดแผง PV', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 4 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'LAYOUT ตำแหน่งแผง SOLAR', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 5 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'ห้อง INVERTER และเส้นทางเดินสายไฟ DC/AC', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 6 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'ข้อมูลช่องแสง ลูกหมุน และระบบล่อฟ้าที่มีอยู่', description: 'การสำรวจเพื่อออกแบบ', required: true, sortOrder: 7 },
+      { category: 'โครงสร้างหลังคา · ก่อนออกแบบ', title: 'รายงาน CIVIL LOAD ANALYSIS', description: 'รับรองแบบโดยวิศวกรโยธา (กว.) — ประเมินน้ำหนักบรรทุกและแรงลม', required: true, sortOrder: 8 },
+      { category: 'ระบบไฟฟ้า · ก่อนออกแบบ', title: 'Load Profile / ค่าไฟฟ้า 12 เดือน', description: 'kWh รายเดือน / ความต้องการรายชั่วโมง เพื่อกำหนดขนาดติดตั้ง', required: true, sortOrder: 9 },
+      { category: 'ระบบไฟฟ้า · ก่อนออกแบบ', title: 'SLD และ MDB Layout เดิม', description: 'Main Breaker, ช่องว่าง, ขนาดสาย feed, จุด Injection', required: true, sortOrder: 10 },
+      { category: 'ระบบไฟฟ้า · ก่อนออกแบบ', title: 'Sub-metering ภายในหน่วยงาน', description: 'ตรวจสอบมิเตอร์ย่อยนอกเหนือจากมิเตอร์หลัก', required: true, sortOrder: 11 },
+      { category: 'ระบบไฟฟ้า · ก่อนออกแบบ', title: 'ตำแหน่งติดตั้งระบบ Zero Export', description: 'ระบบป้องกันไหลย้อน', required: true, sortOrder: 12 },
+      { category: 'ระบบไฟฟ้า · ก่อนออกแบบ', title: 'ระบบโซลาร์เดิมและใบอนุญาต', description: 'ถ้ามีระบบโซลาร์ติดตั้งอยู่แล้ว', required: false, sortOrder: 13 },
+      { category: 'พื้นที่และกรรมสิทธิ์ · ก่อนเสนอราคา', title: 'ผังพื้นที่ (Site Plan)', description: 'ผังพื้นที่โดยรวม', required: true, sortOrder: 14 },
+      { category: 'พื้นที่และกรรมสิทธิ์ · ก่อนเสนอราคา', title: 'เอกสารกรรมสิทธิ์/สิทธิใช้ประโยชน์', description: 'ที่ดินกรมทรัพย์สิน, เช่า, สาธารณูปโภค, ทางหลวง ฯลฯ', required: true, sortOrder: 15 },
+      { category: 'พื้นที่และกรรมสิทธิ์ · ก่อนเสนอราคา', title: 'การใช้พื้นที่ร่วมกับหน่วยงาน/ผู้เช่า', description: 'หน่วยงานอื่น เอกชน ผู้เช่า ที่พักข้าราชการ', required: true, sortOrder: 16 },
+      { category: 'พื้นที่และกรรมสิทธิ์ · ก่อนเสนอราคา', title: 'พื้นที่รองรับงานก่อสร้างชั่วคราว', description: 'เครน นั่งร้าน สำนักงานชั่วคราว โรงงานชั่วคราว', required: true, sortOrder: 17 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'ใบอนุญาตเชื่อมต่อระบบไฟฟ้า (PEA)', description: 'กรณีมีระบบโซลาร์อยู่แล้ว', required: false, sortOrder: 18 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'ใบอนุญาตก่อสร้าง (อ.1)', description: 'ตรวจสอบใบอนุญาตเดิม', required: true, sortOrder: 19 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'ใบอนุญาตโรงงาน (ร.ง.4) และระยะ 100 ม.', description: 'กรณี Solar Farm / Floating', required: false, sortOrder: 20 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'ผังเมือง (สีเขต)', description: 'ตรวจสอบว่าติดตั้ง Solar Farm/Floating ได้', required: true, sortOrder: 21 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'เงินกองทุนพลังงาน', description: 'กรณีเพิ่มระบบจากเดิม — เก็บทั้งส่วนเดิมและส่วนใหม่', required: false, sortOrder: 22 },
+      { category: 'กฎหมายและใบอนุญาต · ก่อนเสนอราคา', title: 'ผู้มีอำนาจลงนามสัญญา', description: 'ตรวจสอบผู้มีอำนาจและรายละเอียดคู่สัญญา', required: true, sortOrder: 23 }
+    ];
+    return raw.map(function (tpl, idx) {
       return {
         id: 'tpl_' + String(idx + 1).padStart(3, '0'),
         category: tpl.category,
@@ -340,6 +361,36 @@
         active: true
       };
     });
+  }
+
+  var CHECKLIST_SPEC_VERSION = '5';
+
+  function syncChecklistTemplates(db) {
+    var spec = templatesSpec();
+    db.ChecklistTemplates = spec.slice();
+    var sites = list(db, 'Sites');
+    var t = new Date().toISOString();
+    sites.forEach(function (site) {
+      var items = findWhere(db, 'ChecklistItems', function (i) { return i.siteId === site.id; });
+      var haveTpl = {};
+      items.forEach(function (i) { if (i.templateId) haveTpl[i.templateId] = true; });
+      spec.forEach(function (tpl) {
+        if (!haveTpl[tpl.id]) {
+          append(db, 'ChecklistItems', {
+            id: 'cli_' + site.id + '_' + tpl.id,
+            siteId: site.id,
+            templateId: tpl.id,
+            customTitle: '',
+            required: tpl.required,
+            status: ITEM_STATUS.EMPTY,
+            currentFileId: '',
+            createdAt: t,
+            updatedAt: t
+          });
+        }
+      });
+    });
+    upsertSetting(db, 'checklistSpecVersion', CHECKLIST_SPEC_VERSION);
   }
 
   function seedChecklistForSite(db, siteId, templates, t) {
@@ -369,7 +420,7 @@
 
     var targets = items.filter(function (item, idx) {
       if (mode === 'partial') return item.required === true && idx < 2;
-      if (mode === 'complete' || mode === 'accepted') return item.required === true || idx === 8;
+      if (mode === 'complete' || mode === 'accepted') return item.required === true || idx === 12;
       return false;
     });
 
@@ -623,7 +674,7 @@
     upsertSetting(db, 'authWarning', AUTH_WARNING);
     upsertSetting(db, 'onedriveMode', STORAGE.MOCK);
     upsertSetting(db, 'spreadsheetId', 'localStorage-mock');
-    upsertSetting(db, 'mockDataVersion', '3');
+    upsertSetting(db, 'mockDataVersion', '5');
     upsertSetting(db, 'mockDataSummary', {
       accounts: ['KHT001', 'KHT002', 'KHT003', 'GTHP001', 'GTHP002'],
       statuses: ['Draft', 'Submitted', 'NeedsRevision', 'Completed'],
@@ -813,12 +864,13 @@
           template: tpl || null,
           title: item.customTitle || (tpl && tpl.title) || 'เอกสารกำหนดเอง',
           category: (tpl && tpl.category) || 'เอกสารอื่น',
+          sortOrder: tpl ? Number(tpl.sortOrder) : 9999,
           versions: versions,
           currentFiles: versions.filter(function (f) { return f.isCurrent; }),
           currentFile: versions.filter(function (f) { return f.isCurrent; })[0] || versions[0] || null,
           progress: null
         };
-      });
+      }).sort(function (a, b) { return a.sortOrder - b.sortOrder; });
       return { site: site, progress: computeSiteProgress(db, site.id), items: itemViews };
     });
     var comments = findWhere(db, 'Comments', function (c) { return c.projectId === projectId; })

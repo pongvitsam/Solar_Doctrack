@@ -568,8 +568,20 @@ table.data tr.clickable { cursor: pointer; }
   padding: 10px 0;
   border-top: 1px dashed var(--line);
 }
-.check-item .title { font-weight: 600; }
-.check-item .cat { font-size: 0.75rem; color: var(--muted); }
+.check-item .title { font-weight: 600; font-size: 0.9rem; }
+.check-item-desc { margin: 2px 0 6px; line-height: 1.35; }
+.check-category { margin-top: 10px; }
+.check-category:first-child { margin-top: 0; }
+.check-category-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--pea-purple-deep);
+  padding: 8px 10px;
+  margin: 0 0 6px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(74,28,107,0.08), transparent);
+  border-left: 3px solid var(--pea-gold);
+}
 .version-list { margin-top: 8px; font-size: 0.78rem; color: var(--muted); }
 .version-list li { margin-bottom: 4px; }
 

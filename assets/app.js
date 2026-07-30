@@ -941,6 +941,20 @@
     ]);
   }
 
+  function groupItemsByCategory_(items) {
+    var groups = [];
+    var map = {};
+    items.forEach(function (iv) {
+      var cat = iv.category || 'เอกสารอื่น';
+      if (!map[cat]) {
+        map[cat] = { category: cat, items: [] };
+        groups.push(map[cat]);
+      }
+      map[cat].items.push(iv);
+    });
+    return groups;
+  }
+
   function renderSiteBlock(sv, open) {
     var block = el('div', { className: 'site-block' + (open ? ' open' : '') });
     var head = el('div', {
@@ -962,8 +976,13 @@
         onClick: function () { openCustomDocModal(sv.site.id); }
       }, ['+ เอกสารกำหนดเอง']));
     }
-    sv.items.forEach(function (iv) {
-      body.appendChild(renderCheckItem(iv, sv.site));
+    groupItemsByCategory_(sv.items).forEach(function (grp) {
+      body.appendChild(el('div', { className: 'check-category' }, [
+        el('div', { className: 'check-category-title', text: grp.category })
+      ]));
+      grp.items.forEach(function (iv) {
+        body.appendChild(renderCheckItem(iv, sv.site));
+      });
     });
     block.appendChild(body);
     return block;
@@ -985,9 +1004,11 @@
     var canEditFiles = isKHT() && (state.project.project.status === 'Draft' || state.project.project.status === 'NeedsRevision');
     var left = el('div', null, [
       el('div', { className: 'title', text: iv.title + (iv.item.required ? ' *' : '') }),
-      el('div', { className: 'cat', text: iv.category }),
+      iv.template && iv.template.description
+        ? el('div', { className: 'hint check-item-desc', text: iv.template.description })
+        : null,
       chip(iv.item.status)
-    ]);
+    ].filter(Boolean));
     if (currentFiles.length) {
       var cur = el('ul', { className: 'current-file-list' });
       currentFiles.forEach(function (f) {

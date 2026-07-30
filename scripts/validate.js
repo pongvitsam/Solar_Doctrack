@@ -130,7 +130,7 @@ console.log('4) Mock API seed + workflow (vm + localStorage polyfill)');
         }).then(function (prj) {
           return API.apiGetProject(tok, prj.project.id).then(function (detail) {
             var required = detail.sites[0].items.filter(function (i) { return i.item.required; });
-            assert(required.length >= 8, 'required checklist items');
+            assert(required.length >= 19, 'required checklist items');
             var chain = Promise.resolve();
             required.forEach(function (iv, idx) {
               chain = chain.then(function () {
