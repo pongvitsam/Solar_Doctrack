@@ -643,11 +643,23 @@
     var done = required.filter(function (i) {
       return i.status === ITEM_STATUS.UPLOADED || i.status === ITEM_STATUS.ACCEPTED;
     });
+    var itemIds = items.map(function (i) { return i.id; });
+    var lastUploadAt = '';
+    if (itemIds.length) {
+      findWhere(db, 'Files', function (f) {
+        return itemIds.indexOf(f.checklistItemId) !== -1 && f.uploadedAt;
+      }).forEach(function (f) {
+        if (!lastUploadAt || String(f.uploadedAt) > String(lastUploadAt)) {
+          lastUploadAt = f.uploadedAt;
+        }
+      });
+    }
     return {
       total: items.length,
       required: required.length,
       completedRequired: done.length,
-      complete: required.length > 0 && done.length === required.length
+      complete: required.length > 0 && done.length === required.length,
+      lastUploadAt: lastUploadAt || null
     };
   }
 

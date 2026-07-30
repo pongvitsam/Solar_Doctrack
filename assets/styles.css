@@ -424,9 +424,24 @@ table.data tr.clickable { cursor: pointer; }
 }
 .site-head {
   display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  align-items: flex-start;
   padding: 12px 14px;
   background: linear-gradient(90deg, #f8f3fc, #fffdf6);
   cursor: pointer;
+}
+.site-upload-at {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--pea-purple-deep);
+  font-weight: 500;
+}
+.site-upload-at--none {
+  color: var(--muted);
+  font-weight: 400;
+}
+.site-upload-at-time {
+  font-variant-numeric: tabular-nums;
 }
 .site-body { padding: 0 14px 14px; display: none; }
 .site-block.open .site-body { display: block; }

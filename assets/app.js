@@ -920,6 +920,17 @@
     return wrap;
   }
 
+  function siteLastUploadMeta_(sv) {
+    var at = sv.progress && sv.progress.lastUploadAt;
+    if (!at) {
+      return el('span', { className: 'site-upload-at site-upload-at--none', text: 'ยังไม่มีการอัปโหลด' });
+    }
+    return el('span', { className: 'site-upload-at' }, [
+      document.createTextNode('อัปโหลดล่าสุด '),
+      el('span', { className: 'site-upload-at-time', text: fmtDate(at) })
+    ]);
+  }
+
   function renderSiteBlock(sv, open) {
     var block = el('div', { className: 'site-block' + (open ? ' open' : '') });
     var head = el('div', {
@@ -928,7 +939,8 @@
     }, [
       el('div', null, [
         el('strong', { text: sv.site.siteCode + ' — ' + sv.site.name }),
-        el('div', { className: 'hint', text: (sv.site.location || '') + ' · บังคับ ' + sv.progress.completedRequired + '/' + sv.progress.required })
+        el('div', { className: 'hint', text: (sv.site.location || '') + ' · บังคับ ' + sv.progress.completedRequired + '/' + sv.progress.required }),
+        siteLastUploadMeta_(sv)
       ]),
       chip(sv.site.status)
     ]);
