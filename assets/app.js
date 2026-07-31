@@ -25,7 +25,9 @@
     filters: { q: '', status: '', sort: 'updated' },
     expandedContracts: {},
     modal: null,
-    unreadNotifications: 0
+    unreadNotifications: 0,
+    loginFlow: { step: 'dept', dept: '', error: '' },
+    bootError: null
   };
 
   var STATUS_LABEL = {
@@ -165,23 +167,126 @@
     return list;
   }
 
-  function renderLoginDemoPanel() {
-    var wrap = el('div', { className: 'demo-login-panel' });
-    wrap.appendChild(el('div', { className: 'demo-login-title', text: 'เลือกกองของคุณ' }));
-    var grid = el('div', { className: 'demo-login-grid' });
-    getLoginDemoAccounts().forEach(function (a) {
+  function getLoginUsersForRole(role) {
+    var byRole = (state.boot && state.boot.loginUsersByRole) || {};
+    var list = byRole[role] || [];
+    if (list.length) return list;
+    return getLoginDemoAccounts().filter(function (a) { return a.role === role; });
+  }
+
+  function normalizeDeptInput(raw) {
+    var v = String(raw || '').trim().toUpperCase().replace(/\./g, '');
+    if (v === 'KHT' || v === 'กขท') return 'KHT';
+    if (v === 'GTHP' || v === 'กธพ') return 'GTHP';
+    return '';
+  }
+
+  function openLoginDept(dept) {
+    var users = getLoginUsersForRole(dept);
+    if (!users.length) {
+      state.loginFlow = { step: 'dept', dept: '', error: 'ยังไม่มีผู้ใช้ในแผนก ' + roleLabelTh(dept) };
+      render();
+      return;
+    }
+    state.loginFlow = { step: 'person', dept: dept, error: '' };
+    render();
+  }
+
+  function renderLoginDeptStep(card) {
+    card.appendChild(el('p', { className: 'login-subtitle', text: 'กรอก Username แผนก (ไม่ใช้รหัสผ่าน)' }));
+    if (state.boot && state.boot.deploymentKind === 'static-demo') {
+      card.appendChild(el('div', { className: 'login-env-badges' }, [
+        el('span', { className: 'login-env-badge', text: 'Demo' }),
+        el('span', { className: 'login-env-badge', text: 'GitHub Pages' })
+      ]));
+    } else if (state.boot && state.boot.deploymentMode === 'production') {
+      card.appendChild(el('div', { className: 'login-env-badges' }, [
+        el('span', { className: 'login-env-badge', text: 'Production' })
+      ]));
+    }
+
+    var field = el('div', { className: 'field login-dept-field' });
+    field.appendChild(el('label', { text: 'Username แผนก' }));
+    var inputWrap = el('div', { className: 'login-dept-input-wrap' });
+    var deptInput = el('input', {
+      id: 'loginDeptInput',
+      className: 'login-dept-input',
+      placeholder: 'KHT หรือ GTHP',
+      autocomplete: 'organization',
+      value: state.loginFlow.dept || ''
+    });
+    deptInput.addEventListener('input', function () {
+      state.loginFlow.error = '';
+    });
+    inputWrap.appendChild(deptInput);
+    field.appendChild(inputWrap);
+    field.appendChild(el('p', { className: 'hint login-dept-hint', text: '1 แผนก = KHT หรือ GTHP · ไม่มีรหัสผ่าน · จากนั้นเลือกชื่อตัวเอง' }));
+    card.appendChild(field);
+
+    var chips = el('div', { className: 'login-dept-chips' });
+    var samples = el('div', { className: 'login-dept-samples' }, [
+      el('div', { className: 'login-dept-samples-title', text: 'Username แผนกทดลอง' }),
+      chips
+    ]);
+    ['KHT', 'GTHP'].forEach(function (code) {
+      chips.appendChild(el('button', {
+        type: 'button',
+        className: 'login-dept-chip login-dept-chip--' + code.toLowerCase(),
+        onClick: function () {
+          var inp = $('#loginDeptInput');
+          if (inp) inp.value = code;
+          openLoginDept(code);
+        }
+      }, [roleLabelTh(code)]));
+    });
+    card.appendChild(samples);
+
+    if (state.loginFlow.error || state.bootError) {
+      card.appendChild(el('div', {
+        className: 'login-error-box',
+        text: state.loginFlow.error || state.bootError
+      }));
+    }
+
+    card.appendChild(el('button', {
+      className: 'btn btn-primary btn-block login-open-dept-btn', type: 'button',
+      onClick: function () {
+        var dept = normalizeDeptInput($('#loginDeptInput') && $('#loginDeptInput').value);
+        if (!dept) {
+          state.loginFlow.error = 'กรอก KHT (กขท.) หรือ GTHP (กธพ.)';
+          render();
+          return;
+        }
+        openLoginDept(dept);
+      }
+    }, ['เปิดแผนก']));
+  }
+
+  function renderLoginPersonStep(card) {
+    var dept = state.loginFlow.dept;
+    card.appendChild(el('button', {
+      type: 'button', className: 'btn btn-ghost btn-sm login-step-back',
+      onClick: function () {
+        state.loginFlow = { step: 'dept', dept: '', error: '' };
+        render();
+      }
+    }, ['← เปลี่ยนแผนก']));
+    card.appendChild(el('div', { className: 'login-person-head' }, [
+      el('strong', { text: 'เลือกชื่อของคุณ' }),
+      el('span', { className: 'hint', text: 'แผนก ' + roleLabelTh(dept) })
+    ]));
+    var grid = el('div', { className: 'login-user-grid' });
+    getLoginUsersForRole(dept).forEach(function (u) {
       grid.appendChild(el('button', {
         type: 'button',
-        className: 'demo-login-card demo-login-card--' + String(a.role || '').toLowerCase(),
-        onClick: function () { doLogin(a.employeeId); }
+        className: 'login-user-card login-user-card--' + String(dept).toLowerCase(),
+        onClick: function () { doLogin(u.employeeId); }
       }, [
-        el('span', { className: 'demo-login-role', text: roleLabelTh(a.role) }),
-        el('span', { className: 'demo-login-desc', text: a.role === 'KHT' ? 'อัปโหลดและส่งเอกสาร' : 'ตรวจและอนุมัติเอกสาร' }),
-        el('span', { className: 'demo-login-action', text: 'เข้าใช้งาน →' })
+        el('span', { className: 'login-user-name', text: u.name }),
+        el('span', { className: 'login-user-action', text: 'เข้าใช้งาน →' })
       ]));
     });
-    wrap.appendChild(grid);
-    return wrap;
+    card.appendChild(grid);
   }
 
   function isQuickGuideHidden() {
@@ -259,20 +364,15 @@
     try {
       var data = await api('apiGetBootstrap', getToken());
       state.boot = data;
+      state.bootError = null;
       state.session = data.session;
       if (state.session && state.session.token) setToken(state.session.token);
       if (state.session) await refreshUnreadCount();
       render();
       if (state.session) loadRouteData();
     } catch (e) {
-      $('#app').innerHTML = '';
-      $('#app').appendChild(el('div', { className: 'login-page' }, [
-        el('div', { className: 'login-card' }, [
-          el('div', { className: 'error-box', text: 'โหลดไม่สำเร็จ: ' + e.message }),
-          el('p', { className: 'hint', text: 'ข้อมูล mock เก็บใน localStorage — กดรีเซ็ตจากหน้าตั้งค่า (GTHP) ได้' }),
-          el('button', { className: 'btn btn-primary', type: 'button', onClick: function () { location.reload(); } }, ['ลองใหม่'])
-        ])
-      ]));
+      state.bootError = e.message;
+      render();
     }
   }
 
@@ -333,40 +433,26 @@
       el('h1', { text: 'Solar DocTrack' }),
       el('p', { text: 'ติดตามเอกสารโซลาร์ — ใช้งานง่าย เปลี่ยนคนได้ทันที' })
     ]));
-    if (state.boot && state.boot.deploymentKind === 'static-demo') {
-      card.appendChild(el('div', {
-        className: 'auth-warn auth-warn--soft',
-        text: 'โหมดสาธิต · ข้อมูลในเครื่องนี้เท่านั้น'
-      }));
+
+    if (state.loginFlow.step === 'person' && state.loginFlow.dept) {
+      renderLoginPersonStep(card);
+    } else {
+      renderLoginDeptStep(card);
     }
-    card.appendChild(renderLoginDemoPanel());
 
-    var manual = el('details', { className: 'login-manual' });
-    manual.appendChild(el('summary', { text: 'เข้าด้วยรหัสพนักงาน' }));
-    var form = el('form', {
-      onSubmit: function (ev) {
-        ev.preventDefault();
-        doLogin($('#empId').value.trim());
-      }
-    });
-    form.appendChild(el('div', { className: 'field' }, [
-      el('label', { text: 'รหัสพนักงาน' }),
-      el('input', { id: 'empId', name: 'employeeId', placeholder: 'เช่น KHT001', autocomplete: 'username', required: 'required' })
-    ]));
-    form.appendChild(el('button', { className: 'btn btn-primary btn-block', type: 'submit' }, ['เข้าสู่ระบบ']));
-    manual.appendChild(form);
-    card.appendChild(manual);
+    if (state.boot && state.boot.deploymentKind === 'static-demo') {
+      card.appendChild(el('button', {
+        className: 'btn btn-ghost btn-block login-setup-btn', type: 'button',
+        onClick: async function () {
+          try {
+            await withLoad(async function () { await api('apiRunSetup', ''); });
+            toast('เตรียมข้อมูลตัวอย่างแล้ว — เปิดแผนก KHT หรือ GTHP', 'ok');
+            boot();
+          } catch (e) { toast(e.message, 'err'); }
+        }
+      }, ['ครั้งแรก? เตรียมข้อมูลตัวอย่าง']));
+    }
 
-    card.appendChild(el('button', {
-      className: 'btn btn-ghost btn-block login-setup-btn', type: 'button',
-      onClick: async function () {
-        try {
-          await withLoad(async function () { await api('apiRunSetup', ''); });
-          toast('เตรียมข้อมูลตัวอย่างแล้ว — เลือกกองด้านบน', 'ok');
-          boot();
-        } catch (e) { toast(e.message, 'err'); }
-      }
-    }, ['ครั้งแรก? เตรียมข้อมูลตัวอย่าง']));
     page.appendChild(card);
     return page;
   }
@@ -388,6 +474,7 @@
     setToken('');
     state.session = null;
     state.dashboard = null;
+    state.loginFlow = { step: 'dept', dept: '', error: '' };
     render();
   }
 

@@ -791,6 +791,18 @@
 
   // ---- API methods (return ok_/fail_ then unwrap in wrap) ----
 
+  function buildLoginUsersByRole(db) {
+    var out = { KHT: [], GTHP: [] };
+    list(db, 'Users').filter(function (u) { return u.active !== false; }).forEach(function (u) {
+      var entry = { employeeId: u.employeeId, name: u.name, role: u.role };
+      if (u.role === ROLES.KHT) out.KHT.push(entry);
+      else if (u.role === ROLES.GTHP) out.GTHP.push(entry);
+    });
+    out.KHT.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'th'); });
+    out.GTHP.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'th'); });
+    return out;
+  }
+
   function apiGetBootstrap(token) {
     var db = loadDb();
     var session = token ? getSession(token) : null;
@@ -814,7 +826,8 @@
       storageMode: getStorageMode(db),
       emailNotificationsEnabled: false,
       templates: list(db, 'ChecklistTemplates').filter(function (t) { return t.active !== false; }),
-      demoAccounts: DEMO_ACCOUNTS
+      demoAccounts: DEMO_ACCOUNTS,
+      loginUsersByRole: buildLoginUsersByRole(db)
     });
   }
 
